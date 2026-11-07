@@ -91,7 +91,7 @@ def parse_package_json(text: str, source: str = "package.json") -> list[Dependen
 # ---------------------------------------------------------------- install commands
 
 _PIP_CMD = re.compile(
-    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:(?:python[0-9.]*|py)\s+-m\s+)?(?:pip[0-9.]*|uv\s+pip|poetry|pipenv|conda|mamba)\s+(?:install|add)\s+(.+)",
+    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:(?:python[0-9.]*|py)\s+-m\s+)?(?:pip[0-9.]*|uv\s+pip|poetry|pipenv|conda|mamba)\s+(?:install|add)\s+(.+)|(?:^|[\s;&|`(])(?:uv\s+add|pipx\s+install)\s+(.+)",
     re.I,
 )
 _NPM_CMD = re.compile(
@@ -115,13 +115,24 @@ def _split_args(arg_text: str) -> list[str]:
         return arg_text.split()
 
 
+def _segments(text: str) -> list[str]:
+    """Each simple command in `text`: split on lines, then on shell separators (&&, ||, ;, |),
+    so `uv add a && npm i b` yields two commands instead of only the first."""
+    out = []
+    for line in text.splitlines():
+        for part in re.split(r"\s*(?:&&|\|\||;|\|)\s*", line):
+            part = part.strip().lstrip("$>").strip()
+            if part:
+                out.append(part)
+    return out
+
+
 def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency]:
     """All package names in every `pip install ...` line of `text`."""
     deps: list[Dependency] = []
-    for line in text.splitlines():
-        line = line.strip().lstrip("$>").strip()
+    for line in _segments(text):
         for m in _PIP_CMD.finditer(line):
-            tokens = _split_args(m.group(1))
+            tokens = _split_args(m.group(1) or m.group(2))
             skip = False
             for tok in tokens:
                 if skip:
@@ -140,8 +151,7 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
 
 def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency]:
     deps: list[Dependency] = []
-    for line in text.splitlines():
-        line = line.strip().lstrip("$>").strip()
+    for line in _segments(text):
         for m in _NPM_CMD.finditer(line):
             tokens = _split_args(m.group(1))
             skip = False

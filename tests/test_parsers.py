@@ -58,6 +58,10 @@ def test_package_json_invalid_raises():
     ("conda install -c conda-forge rdkit", ["rdkit"]),
     ("pip install git+https://github.com/a/b.git", []),
     ("pip install requests requests", ["requests"]),
+    ("uv add httpx 'pydantic>=2'", ["httpx", "pydantic"]),
+    ("pipx install ruff", ["ruff"]),
+    ("pip install flask && pip install requests; pip3 install rich", ["flask", "requests", "rich"]),
+    ("uv pip install numpy", ["numpy"]),
 ])
 def test_pip_commands(cmd, expected):
     assert names(parse_pip_command(cmd)) == expected

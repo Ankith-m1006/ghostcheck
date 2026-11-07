@@ -47,6 +47,12 @@ def test_pip_flag(fake_network, tmp_path):
     assert run(["--pip", "pip install requests no-such-pkg-here"], tmp_path) == 1
 
 
+def test_cmd_flag_checks_every_installer_in_agent_output(fake_network, tmp_path):
+    agent_output = "uv add requests\nthen: npm i express-tiny-helper && pipx install no-such-pkg-here"
+    assert run(["--cmd", agent_output], tmp_path) == 1
+    assert run(["--cmd", "uv add requests && npm i express-tiny-helper"], tmp_path) == 0
+
+
 def test_npm_flag(fake_network, tmp_path):
     assert run(["--npm", "npm i express-tiny-helper"], tmp_path) == 0
 
