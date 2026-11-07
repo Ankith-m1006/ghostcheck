@@ -68,6 +68,9 @@ def test_package_json_invalid_raises():
     ("pipx install --python python3.12 black", ["black"]),
     ("uv --project backend add requests", ["requests"]),
     ("uv --directory=api --offline add httpx", ["httpx"]),
+    # Qodo re-review: a prose apostrophe before the command must not hide chained installs
+    ("I'll install them: pip install flask && pip install requestz", ["flask", "requestz"]),
+    ("Don't forget; pip install 'requests;python_version < \"3.11\"' rich && pip install httpx", ["requests", "rich", "httpx"]),
     ("uv pip install numpy", ["numpy"]),
 ])
 def test_pip_commands(cmd, expected):

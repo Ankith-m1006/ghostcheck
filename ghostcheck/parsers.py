@@ -124,28 +124,50 @@ def _split_args(arg_text: str) -> list[str]:
 def _segments(text: str) -> list[str]:
     """Each simple command in `text`: split on lines, then on shell separators (&&, ||, ;, |),
     so `uv add a && npm i b` yields two commands instead of only the first."""
-    out = []
+    out: list[str] = []
     for line in text.splitlines():
-        part, quote, i = "", "", 0
-        while i < len(line):  # split on separators only outside quotes, so 'pkg;marker' stays whole
-            ch = line[i]
-            if quote:
-                quote = "" if ch == quote else quote
-            elif ch in "'\"":
-                quote = ch
-            elif ch == "\\" and i + 1 < len(line):
-                part += line[i:i + 2]
-                i += 2
-                continue
-            elif line.startswith(("&&", "||"), i) or ch in ";|":
-                out.append(part)
-                part = ""
-                i += 2 if line.startswith(("&&", "||"), i) else 1
-                continue
-            part += ch
-            i += 1
-        out.append(part)
+        # Quotes only count from the first installer word on: an apostrophe in prose before it
+        # ("I'll install them: pip install a && pip install b") must not swallow later separators.
+        m = _INSTALLER_WORD.search(line)
+        start = m.start() if m else len(line)
+        parts = _split_line(line[start:], quotes=True)
+        if parts is None:  # an unclosed quote is prose, not shell quoting: split plainly
+            parts = _split_line(line[start:], quotes=False)
+        prose = _split_line(line[:start], quotes=False)
+        if prose and parts:  # the prose fragment right before the command is part of the same segment
+            parts[0] = prose.pop() + parts[0]
+        out += prose + parts
     return [p for p in (s.strip().lstrip("$>").strip() for s in out) if p]
+
+
+_INSTALLER_WORD = re.compile(r"(?<![\w-])(?:sudo\s+)?(?:python[0-9.]*\s+-m\s+)?(?:pip[0-9.]*|pipx|uv|poetry|pipenv|conda|mamba|npm|yarn|pnpm|bun)\s", re.I)
+
+
+def _split_line(line: str, quotes: bool) -> list[str] | None:
+    """Split one line on &&, ||, ; and |. With quotes=True, separators inside '...' or "..." are kept,
+    so 'pkg;marker' stays whole; returns None if a quote is left open."""
+    out, part, quote, i = [], "", "", 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            quote = "" if ch == quote else quote
+        elif quotes and ch in "'\"":
+            quote = ch
+        elif ch == "\\" and i + 1 < len(line):
+            part += line[i:i + 2]
+            i += 2
+            continue
+        elif line.startswith(("&&", "||"), i) or ch in ";|":
+            out.append(part)
+            part = ""
+            i += 2 if line.startswith(("&&", "||"), i) else 1
+            continue
+        part += ch
+        i += 1
+    if quote:
+        return None
+    out.append(part)
+    return out
 
 
 def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency]:
