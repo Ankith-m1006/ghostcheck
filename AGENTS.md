@@ -32,7 +32,7 @@ Every change must leave `python -m pytest -q` green. Do not open a PR with a fai
 
 3. **Quotes are counted from the installer word, never from the start of the line.** When splitting a shell line on `;`, `&&`, `||`, `|`, ignore separators inside quotes that open at or after `pip`/`npm`/`uv`/`pipx`; if a quote never closes, fall back to a plain split. *Where:* `parsers.py` (`_segments`, `_split_line`). *Why:* agent output mixes prose ("don't") with commands; counting quotes from the line start hides real installs.
 
-4. **All network access goes through `registry.py`.** No other module may call `requests`. Every request has a timeout; `--offline` must never touch the network; results are cached. *Why:* agents run ghostcheck inside sandboxes and CI where the network is slow, metered or blocked, and tests must stay offline.
+4. **Registry lookups go through `registry.py`; the only other network call is the opt-in `--explain`.** No module except `registry.py` may query PyPI or npm. `gemma.py` (used only by `--explain`) is the one other module allowed to reach the network, and a default run must never import or call it (a test enforces this). Every request has a timeout; `--offline` must never touch the network; registry results are cached. *Why:* agents run ghostcheck inside sandboxes and CI where the network is slow, metered or blocked, and tests must stay offline.
 
 5. **Never flag the standard library or Node built-ins as ghosts.** Check `stdlib.py` before any "not found" finding. *Why:* `pip install json` style mistakes are common in agent output, and a false "ghost" on a built-in teaches users to ignore the tool.
 
