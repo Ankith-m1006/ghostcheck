@@ -141,3 +141,21 @@ def test_high_beats_unverified_and_allow_flag(monkeypatch, tmp_path, capsys, net
     assert run(["--offline", "--json", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
     data = json.loads(capsys.readouterr().out)
     assert data["exit_code"] == 3 and data["unverified"] == 1
+
+
+def test_unverified_count_uses_registry_identity(monkeypatch, tmp_path, capsys):
+    """Qodo review of #4: Foo_Bar and foo-bar are one PyPI package, so one unverified package."""
+    req = tmp_path / "requirements.txt"
+    req.write_text("Foo_Bar\nfoo-bar\n")
+    assert run(["--offline", "--json", str(req)], tmp_path) == 3
+    assert json.loads(capsys.readouterr().out)["unverified"] == 1
+
+
+def test_explain_mentions_unverified_packages(monkeypatch, tmp_path, capsys):
+    """Qodo review of #4: an unverified-only run must not print 'No findings'."""
+    import ghostcheck.explain as explain_mod
+    seen = {}
+    monkeypatch.setattr(explain_mod, "explain", lambda fs, *a, **k: seen.setdefault("rules", [f.rule for f in fs]) and "ok")
+    assert run(["--offline", "--explain", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
+    assert seen["rules"] == ["not-checked"]
+    assert "No findings" not in capsys.readouterr().out

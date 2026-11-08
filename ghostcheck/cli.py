@@ -18,7 +18,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
-from .parsers import Dependency, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements
+from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements
 from .registry import Registry
 from .rules import HIGH, INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
 
@@ -82,7 +82,9 @@ def main(argv: list[str] | None = None) -> int:
         pass
 
     code = exit_code(findings, allow_unverified=args.allow_unverified)
-    unverified = len({(f.ecosystem, f.package) for f in findings if f.rule == UNVERIFIED})
+    # Count registry identities, not spellings: Foo_Bar and foo-bar are one PyPI package.
+    ident = lambda f: (f.ecosystem, normalize_pypi(f.package) if f.ecosystem == PYPI else f.package)
+    unverified = len({ident(f) for f in findings if f.rule == UNVERIFIED})
     if args.json:
         print(json.dumps({"checked": len(deps), "offline": args.offline, "exit_code": code, "unverified": unverified,
                           "findings": [asdict(f) for f in findings]}, indent=2))
@@ -99,7 +101,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{highs} high, {meds} medium, {unverified} not verified" + tail)
     if args.explain and findings:
         from .explain import explain
-        print("\n" + explain([f for f in findings if f.severity != INFO]))
+        # Unverified packages are INFO findings but decide the exit code, so they are explained too.
+        print("\n" + explain([f for f in findings if f.severity != INFO or f.rule == UNVERIFIED]))
     return code
 
 
