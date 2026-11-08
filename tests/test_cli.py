@@ -83,7 +83,7 @@ def test_offline_mode_uses_cache_and_bundled_lists_only(monkeypatch, tmp_path, n
     # cached name -> clean; typo of a top package -> MEDIUM from the bundled list; unknown -> INFO only
     code = run(["--offline", "--pip", "pip install requests reqeusts some-unknown-thing"], tmp_path)
     out = capsys.readouterr().out
-    assert code == 0
+    assert code == 3  # issue #3: the unknown name could not be verified, so it does not pass
     assert "typosquat" in out and "offline" in out
     assert "not-found" not in out  # offline cannot prove a 404
 
@@ -116,3 +116,28 @@ def test_explain_only_describes_existing_findings(fake_network, tmp_path, monkey
     assert code == 1  # exit code comes from the rules, not the model
     assert "no-such-pkg-here" in seen["prompt"] and "do not invent" in seen["prompt"]
     assert "do not install it" in capsys.readouterr().out
+
+
+def test_unreachable_registry_fails_closed(monkeypatch, tmp_path, capsys):
+    """Issue #3: a package nobody could verify must not pass silently."""
+    class Down:
+        def __call__(self, url, method="GET", headers=None):
+            raise ConnectionError("registry unreachable")
+    monkeypatch.setattr(registry_mod, "_requests_fetcher", lambda: Down())
+    monkeypatch.setattr(registry_mod.time, "sleep", lambda s: None)
+    assert run(["--pip", "pip install some-unknown-thing"], tmp_path) == 3
+    assert "not verified" in capsys.readouterr().out
+
+
+def test_high_beats_unverified_and_allow_flag(monkeypatch, tmp_path, capsys, net):
+    net.pypi("requests", [4000] + [100] * 30)
+    monkeypatch.setattr(registry_mod, "_requests_fetcher", lambda: net)
+    monkeypatch.setattr(registry_mod.time, "sleep", lambda s: None)
+    run(["--pip", "pip install requests"], tmp_path)  # fill the cache
+    # offline: one cached clean, one unknown -> 3; with --allow-unverified -> 0
+    assert run(["--offline", "--pip", "pip install requests some-unknown-thing"], tmp_path) == 3
+    assert run(["--offline", "--allow-unverified", "--pip", "pip install requests some-unknown-thing"], tmp_path) == 0
+    out = capsys.readouterr()
+    assert run(["--offline", "--json", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
+    data = json.loads(capsys.readouterr().out)
+    assert data["exit_code"] == 3 and data["unverified"] == 1
