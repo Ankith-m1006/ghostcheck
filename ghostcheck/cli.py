@@ -18,9 +18,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
-from .parsers import Dependency, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements
+from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements
 from .registry import Registry
-from .rules import HIGH, INFO, MEDIUM, Finding, check_dependency, exit_code
+from .rules import HIGH, INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
 
 
 def default_cache_path() -> Path:
@@ -56,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline", action="store_true", help="no network: bundled lists + cache only")
     ap.add_argument("--cache", metavar="PATH", help="registry cache file (default ~/.cache/ghostcheck/registry_cache.json)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--allow-unverified", action="store_true", help="exit 0 even if some packages could not be verified (default: exit 3)")
     ap.add_argument("--explain", action="store_true", help="add a plain-English paragraph written by Gemma (needs GEMINI_API_KEY)")
     ap.add_argument("--version", action="version", version=f"ghostcheck {__version__}")
     args = ap.parse_args(argv)
@@ -80,9 +81,12 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         pass
 
-    code = exit_code(findings)
+    code = exit_code(findings, allow_unverified=args.allow_unverified)
+    # Count registry identities, not spellings: Foo_Bar and foo-bar are one PyPI package.
+    ident = lambda f: (f.ecosystem, normalize_pypi(f.package) if f.ecosystem == PYPI else f.package)
+    unverified = len({ident(f) for f in findings if f.rule == UNVERIFIED})
     if args.json:
-        print(json.dumps({"checked": len(deps), "offline": args.offline, "exit_code": code,
+        print(json.dumps({"checked": len(deps), "offline": args.offline, "exit_code": code, "unverified": unverified,
                           "findings": [asdict(f) for f in findings]}, indent=2))
     else:
         mode = " (offline)" if args.offline else ""
@@ -93,10 +97,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {f.severity:<6} {f.ecosystem}:{f.package}  {f.rule}: {f.message}{where}")
         highs = sum(f.severity == HIGH for f in findings)
         meds = sum(f.severity == MEDIUM for f in findings)
-        print(f"{highs} high, {meds} medium" + ("  -> do not install until reviewed" if highs else ""))
+        tail = "  -> do not install until reviewed" if highs else ("  -> not verified: check them or pass --allow-unverified" if code == 3 else "")
+        print(f"{highs} high, {meds} medium, {unverified} not verified" + tail)
     if args.explain and findings:
         from .explain import explain
-        print("\n" + explain([f for f in findings if f.severity != INFO]))
+        # Unverified packages are INFO findings but decide the exit code, so they are explained too.
+        print("\n" + explain([f for f in findings if f.severity != INFO or f.rule == UNVERIFIED]))
     return code
 
 

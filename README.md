@@ -19,6 +19,15 @@ It flags:
 
 `--json` gives machine-readable output; `--offline` uses bundled lists and the local cache only.
 
+Exit codes, so an agent or CI step can gate the install:
+
+| Code | Meaning |
+|---|---|
+| 0 | nothing found |
+| 1 | at least one HIGH finding: do not install until reviewed |
+| 2 | usage error |
+| 3 | some packages could not be verified (registry unreachable, or offline with no cached entry). ghostcheck fails closed; pass `--allow-unverified` to accept that risk |
+
 ## Why
 Measured in our study of Gemma 4 coding agents ("Ghosts in the Loop", 2026): when a task names a library that
 does not exist, the agent tries to install it in most episodes, and the install runs before any error is seen.

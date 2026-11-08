@@ -79,5 +79,13 @@ def check_dependency(dep: Dependency, registry: Registry | None, now: datetime |
     return findings, info
 
 
-def exit_code(findings: list[Finding]) -> int:
-    return 1 if any(x.severity == HIGH for x in findings) else 0
+UNVERIFIED = "not-checked"
+
+
+def exit_code(findings: list[Finding], allow_unverified: bool = False) -> int:
+    """0 clean, 1 do not install (any HIGH), 3 not verified (fail closed, AGENTS.md rule 1)."""
+    if any(x.severity == HIGH for x in findings):
+        return 1
+    if not allow_unverified and any(x.rule == UNVERIFIED for x in findings):
+        return 3
+    return 0

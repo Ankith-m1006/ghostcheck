@@ -3,7 +3,7 @@ import pytest
 from ghostcheck import rules, typosquat
 from ghostcheck.parsers import NPM, PYPI, Dependency
 from ghostcheck.registry import NPM_POPULAR_WEEKLY, Registry
-from ghostcheck.rules import HIGH, MEDIUM, check_dependency, exit_code
+from ghostcheck.rules import HIGH, INFO, MEDIUM, Finding, check_dependency, exit_code
 from ghostcheck.typosquat import damerau_levenshtein, nearest_top_package
 
 
@@ -141,6 +141,10 @@ def test_exit_codes():
     assert exit_code([]) == 0
     assert exit_code([f_med]) == 0
     assert exit_code([f_med, f_high]) == 1
+    f_unv = Finding(INFO, "not-checked", "x", "pypi", "registry not checked (offline)", "")
+    assert exit_code([f_unv]) == 3                       # issue #3: fail closed
+    assert exit_code([f_unv, f_high]) == 1               # HIGH still wins
+    assert exit_code([f_unv], allow_unverified=True) == 0
 
 
 # ------------------------------------------------------------------ typosquat helpers
