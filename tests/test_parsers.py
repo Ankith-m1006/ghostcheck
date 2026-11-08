@@ -58,6 +58,20 @@ def test_package_json_invalid_raises():
     ("conda install -c conda-forge rdkit", ["rdkit"]),
     ("pip install git+https://github.com/a/b.git", []),
     ("pip install requests requests", ["requests"]),
+    ("uv add httpx 'pydantic>=2'", ["httpx", "pydantic"]),
+    ("pipx install ruff", ["ruff"]),
+    ("pip install flask && pip install requests; pip3 install rich", ["flask", "requests", "rich"]),
+    # Qodo review on PR #1: quoted ';' is not a separator, installer options are not packages,
+    # uv global options may come before 'add'
+    ("""pip install 'requests;python_version < "3.11"' flask""", ["requests", "flask"]),
+    ("uv add --group test pytest", ["pytest"]),
+    ("pipx install --python python3.12 black", ["black"]),
+    ("uv --project backend add requests", ["requests"]),
+    ("uv --directory=api --offline add httpx", ["httpx"]),
+    # Qodo re-review: a prose apostrophe before the command must not hide chained installs
+    ("I'll install them: pip install flask && pip install requestz", ["flask", "requestz"]),
+    ("Don't forget; pip install 'requests;python_version < \"3.11\"' rich && pip install httpx", ["requests", "rich", "httpx"]),
+    ("uv pip install numpy", ["numpy"]),
 ])
 def test_pip_commands(cmd, expected):
     assert names(parse_pip_command(cmd)) == expected
@@ -136,6 +150,12 @@ Or run `pip install gstpro-validator` too.
     assert ex.python_imports == ["pdfplumber", "cv2", "gstpro_validator"]
     assert ex.pip_installs == ["pdfplumber", "opencv-python", "gstpro-validator"]
     assert ex.npm_installs == []
+
+
+def test_answer_extraction_plain_pipx_line():
+    # Qodo review on PR #1: an unfenced, non-inline pipx line must still be checked
+    ex = extract_from_answer("Install the tool first:\npipx install ruff\nthen run it.", "python")
+    assert ex.pip_installs == ["ruff"]
 
 
 def test_answer_extraction_javascript():

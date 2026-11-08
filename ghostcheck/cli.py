@@ -4,6 +4,7 @@
     ghostcheck package.json
     ghostcheck --pip "pip install a b"
     ghostcheck --npm "npm install a b"
+    ghostcheck --cmd "uv add a && npm i b"   # any installer, or a whole block of agent output
 
 Exit codes: 0 = no HIGH findings, 1 = at least one HIGH finding, 2 = usage / input error.
 """
@@ -34,6 +35,8 @@ def load_dependencies(args) -> list[Dependency]:
         deps += parse_pip_command(args.pip)
     if args.npm:
         deps += parse_npm_command(args.npm)
+    if args.cmd:  # any shell command or agent output: every pip/uv/poetry/pipx and npm/yarn/pnpm/bun install in it
+        deps += parse_pip_command(args.cmd, source="command") + parse_npm_command(args.cmd, source="command")
     for f in args.files:
         path = Path(f)
         text = path.read_text("utf-8")
@@ -49,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("files", nargs="*", help="requirements*.txt or package.json files")
     ap.add_argument("--pip", metavar="CMD", help='a pip command, e.g. "pip install foo bar"')
     ap.add_argument("--npm", metavar="CMD", help='an npm command, e.g. "npm install foo"')
+    ap.add_argument("--cmd", metavar="TEXT", help='any shell command(s) or agent output; checks every install in it, e.g. "uv add foo && npm i bar"')
     ap.add_argument("--offline", action="store_true", help="no network: bundled lists + cache only")
     ap.add_argument("--cache", metavar="PATH", help="registry cache file (default ~/.cache/ghostcheck/registry_cache.json)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
@@ -56,9 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--version", action="version", version=f"ghostcheck {__version__}")
     args = ap.parse_args(argv)
 
-    if not (args.files or args.pip or args.npm):
+    if not (args.files or args.pip or args.npm or args.cmd):
         ap.print_usage(sys.stderr)
-        print("ghostcheck: give a file, --pip or --npm", file=sys.stderr)
+        print("ghostcheck: give a file, --pip, --npm or --cmd", file=sys.stderr)
         return 2
     try:
         deps = load_dependencies(args)

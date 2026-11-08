@@ -91,9 +91,15 @@ def parse_package_json(text: str, source: str = "package.json") -> list[Dependen
 # ---------------------------------------------------------------- install commands
 
 _PIP_CMD = re.compile(
-    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:(?:python[0-9.]*|py)\s+-m\s+)?(?:pip[0-9.]*|uv\s+pip|poetry|pipenv|conda|mamba)\s+(?:install|add)\s+(.+)",
+    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:(?:python[0-9.]*|py)\s+-m\s+)?(?:pip[0-9.]*|uv\s+pip|poetry|pipenv|conda|mamba)\s+(?:install|add)\s+(.+)"
+    # uv add (global options such as --project DIR may come first) and pipx install
+    r"|(?:^|[\s;&|`(])(?:uv(?:\s+(?:--(?:project|directory|python|cache-dir|config-file)(?:=\S+|\s+\S+)|-[a-z]+|--[a-z][\w-]*))*\s+add|pipx\s+install)\s+(.+)",
     re.I,
 )
+# uv add / pipx install flags that take a value (checked on top of the pip ones for those commands)
+_UV_PIPX_VALUE_FLAGS = {"--group", "--optional", "--extra", "--index", "--default-index", "--python", "-p",
+                        "--package", "--project", "--directory", "--marker", "-m", "--tag", "--branch", "--rev",
+                        "--script", "--pip-args", "--suffix", "--spec", "--preinstall", "--index-url"}
 _NPM_CMD = re.compile(
     r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:npm\s+(?:install|i|add)|yarn\s+(?:global\s+)?add|pnpm\s+(?:add|install|i)|bun\s+(?:add|install|i))\s+(.+)",
     re.I,
@@ -115,19 +121,68 @@ def _split_args(arg_text: str) -> list[str]:
         return arg_text.split()
 
 
+def _segments(text: str) -> list[str]:
+    """Each simple command in `text`: split on lines, then on shell separators (&&, ||, ;, |),
+    so `uv add a && npm i b` yields two commands instead of only the first."""
+    out: list[str] = []
+    for line in text.splitlines():
+        # Quotes only count from the first installer word on: an apostrophe in prose before it
+        # ("I'll install them: pip install a && pip install b") must not swallow later separators.
+        m = _INSTALLER_WORD.search(line)
+        start = m.start() if m else len(line)
+        parts = _split_line(line[start:], quotes=True)
+        if parts is None:  # an unclosed quote is prose, not shell quoting: split plainly
+            parts = _split_line(line[start:], quotes=False)
+        prose = _split_line(line[:start], quotes=False)
+        if prose and parts:  # the prose fragment right before the command is part of the same segment
+            parts[0] = prose.pop() + parts[0]
+        out += prose + parts
+    return [p for p in (s.strip().lstrip("$>").strip() for s in out) if p]
+
+
+_INSTALLER_WORD = re.compile(r"(?<![\w-])(?:sudo\s+)?(?:python[0-9.]*\s+-m\s+)?(?:pip[0-9.]*|pipx|uv|poetry|pipenv|conda|mamba|npm|yarn|pnpm|bun)\s", re.I)
+
+
+def _split_line(line: str, quotes: bool) -> list[str] | None:
+    """Split one line on &&, ||, ; and |. With quotes=True, separators inside '...' or "..." are kept,
+    so 'pkg;marker' stays whole; returns None if a quote is left open."""
+    out, part, quote, i = [], "", "", 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            quote = "" if ch == quote else quote
+        elif quotes and ch in "'\"":
+            quote = ch
+        elif ch == "\\" and i + 1 < len(line):
+            part += line[i:i + 2]
+            i += 2
+            continue
+        elif line.startswith(("&&", "||"), i) or ch in ";|":
+            out.append(part)
+            part = ""
+            i += 2 if line.startswith(("&&", "||"), i) else 1
+            continue
+        part += ch
+        i += 1
+    if quote:
+        return None
+    out.append(part)
+    return out
+
+
 def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency]:
     """All package names in every `pip install ...` line of `text`."""
     deps: list[Dependency] = []
-    for line in text.splitlines():
-        line = line.strip().lstrip("$>").strip()
+    for line in _segments(text):
         for m in _PIP_CMD.finditer(line):
-            tokens = _split_args(m.group(1))
+            tokens = _split_args(m.group(1) or m.group(2))
+            value_flags = _PIP_VALUE_FLAGS | (_UV_PIPX_VALUE_FLAGS if m.group(2) else set())
             skip = False
             for tok in tokens:
                 if skip:
                     skip = False
                     continue
-                if tok in _PIP_VALUE_FLAGS:
+                if tok in value_flags:
                     skip = True
                     continue
                 if tok.startswith("-"):
@@ -140,8 +195,7 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
 
 def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency]:
     deps: list[Dependency] = []
-    for line in text.splitlines():
-        line = line.strip().lstrip("$>").strip()
+    for line in _segments(text):
         for m in _NPM_CMD.finditer(line):
             tokens = _split_args(m.group(1))
             skip = False
@@ -287,7 +341,7 @@ def extract_from_answer(text: str, language: str) -> Extraction:
     rest = _FENCE.sub("\n", text)
     inline = re.findall(r"`([^`\n]+)`", rest)
     prose_cmds = [ln for ln in rest.splitlines()
-                  if re.match(r"^\s*[$>]?\s*(?:sudo\s+)?(?:python[0-9.]*\s+-m\s+)?(?:pip[0-9.]*|npm|yarn|pnpm|bun|uv|poetry|conda)\s", ln)]
+                  if re.match(r"^\s*[$>]?\s*(?:sudo\s+)?(?:python[0-9.]*\s+-m\s+)?(?:pip[0-9.]*|pipx|npm|yarn|pnpm|bun|uv|poetry|conda)\s", ln)]
     cmd_text = "\n".join(fenced + inline + prose_cmds)
     ex.pip_installs = [d.name for d in parse_pip_command(cmd_text)]
     ex.npm_installs = [d.name for d in parse_npm_command(cmd_text)]
