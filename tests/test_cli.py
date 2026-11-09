@@ -169,3 +169,12 @@ def test_each_package_checked_once_across_inputs(fake_network, tmp_path, capsys)
     assert run(["--json", str(req), "--pip", "pip install FLASK requests", "--npm", "npm i flask"], tmp_path) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["checked"] == 3  # pypi:flask, pypi:requests, npm:flask
+
+
+def test_duplicate_keeps_the_file_and_line_source(fake_network, tmp_path, capsys):
+    """Qodo review of #6: a package in a file and in --pip is reported at its file line, not as "pip command"."""
+    req = tmp_path / "requirements.txt"
+    req.write_text("requests\nno-such-pkg-here\n")
+    assert run(["--json", str(req), "--pip", "pip install no-such-pkg-here"], tmp_path) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert [f["source"] for f in data["findings"] if f["rule"] == "not-found"] == ["requirements.txt:2"]
