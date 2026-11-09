@@ -28,6 +28,8 @@ Exit codes, so an agent or CI step can gate the install:
 | 2 | usage error |
 | 3 | some packages could not be verified (registry unreachable, or offline with no cached entry). ghostcheck fails closed; pass `--allow-unverified` to accept that risk |
 
+`--json` prints one object: `version` (the ghostcheck version that made the decision), `checked` (packages checked once each), `offline`, `exit_code`, `unverified` (packages that could not be verified), and `findings` (each with `severity`, `rule`, `package`, `ecosystem`, `message`, `source`).
+
 ## Why
 Measured in our study of Gemma 4 coding agents ("Ghosts in the Loop", 2026): when a task names a library that
 does not exist, the agent tries to install it in most episodes, and the install runs before any error is seen.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghostcheck"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Flag ghost (non-existent), brand-new and typosquatted dependencies before you install them."
 readme = "README.md"
 license = { text = "MIT" }
@@ -17,6 +17,9 @@ dev = ["pytest==8.3.3"]
 
 [project.scripts]
 ghostcheck = "ghostcheck.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "ghostcheck.__version__" }
 
 [tool.setuptools]
 packages = ["ghostcheck", "ghostcheck.data"]
