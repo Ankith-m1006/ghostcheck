@@ -38,6 +38,8 @@ Every change must leave `python -m pytest -q` green. Do not open a PR with a fai
 
 6. **Pin exact versions.** Dependencies in `pyproject.toml` and `requirements*.txt` use `==`. *Why:* a supply-chain tool must not pull floating versions of its own dependencies.
 
+7. **Compare package names by registry identity, everywhere.** For PyPI that is `normalize_pypi(name)` (PEP 503: case-insensitive, runs of `-_.` are one `-`); npm names are compared exactly. Use it for de-duplication, counting, caching and registry URLs. *Where:* `cli.py` (`load_dependencies`, summary counts), `registry.py` (`cache_key`, lookups), `rules.py`. *Why:* Qodo's review of #4 caught `Foo_Bar` and `foo-bar` counted as two unverified packages; the same mistake existed in input de-duplication (#5). Nobody had written this down, so every new code path re-made it.
+
 ## Pull requests
 
 - One ticket per PR. Put the ticket link and its acceptance criteria in the PR body.

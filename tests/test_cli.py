@@ -159,3 +159,13 @@ def test_explain_mentions_unverified_packages(monkeypatch, tmp_path, capsys):
     assert run(["--offline", "--explain", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
     assert seen["rules"] == ["not-checked"]
     assert "No findings" not in capsys.readouterr().out
+
+
+def test_each_package_checked_once_across_inputs(fake_network, tmp_path, capsys):
+    """Issue #5 (AGENTS.md rule 7): one registry identity, one check, whatever the spelling or input."""
+    fake_network.npm("flask", created_days_ago=1500, weekly=200, versions=12)
+    req = tmp_path / "requirements.txt"
+    req.write_text("Flask\nflask\n")
+    assert run(["--json", str(req), "--pip", "pip install FLASK requests", "--npm", "npm i flask"], tmp_path) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["checked"] == 3  # pypi:flask, pypi:requests, npm:flask

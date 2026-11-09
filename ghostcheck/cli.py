@@ -44,7 +44,15 @@ def load_dependencies(args) -> list[Dependency]:
             deps += parse_package_json(text, source=path.name)
         else:
             deps += parse_requirements(text, source=path.name)
-    return deps
+    # One check per registry identity across all inputs; the first source wins (AGENTS.md rule 7).
+    seen: set[tuple[str, str]] = set()
+    unique: list[Dependency] = []
+    for d in deps:
+        key = (d.ecosystem, normalize_pypi(d.name) if d.ecosystem == PYPI else d.name)
+        if key not in seen:
+            seen.add(key)
+            unique.append(d)
+    return unique
 
 
 def main(argv: list[str] | None = None) -> int:
