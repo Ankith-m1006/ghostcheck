@@ -31,12 +31,7 @@ def default_cache_path() -> Path:
 
 def load_dependencies(args) -> list[Dependency]:
     deps: list[Dependency] = []
-    if args.pip:
-        deps += parse_pip_command(args.pip)
-    if args.npm:
-        deps += parse_npm_command(args.npm)
-    if args.cmd:  # any shell command or agent output: every pip/uv/poetry/pipx and npm/yarn/pnpm/bun install in it
-        deps += parse_pip_command(args.cmd, source="command") + parse_npm_command(args.cmd, source="command")
+    # Files first: their sources carry a line number, which is the most useful place to point a finding at.
     for f in args.files:
         path = Path(f)
         text = path.read_text("utf-8")
@@ -44,7 +39,21 @@ def load_dependencies(args) -> list[Dependency]:
             deps += parse_package_json(text, source=path.name)
         else:
             deps += parse_requirements(text, source=path.name)
-    return deps
+    if args.pip:
+        deps += parse_pip_command(args.pip)
+    if args.npm:
+        deps += parse_npm_command(args.npm)
+    if args.cmd:  # any shell command or agent output: every pip/uv/poetry/pipx and npm/yarn/pnpm/bun install in it
+        deps += parse_pip_command(args.cmd, source="command") + parse_npm_command(args.cmd, source="command")
+    # One check per registry identity across all inputs (AGENTS.md rule 7); a file occurrence beats a command one.
+    seen: set[tuple[str, str]] = set()
+    unique: list[Dependency] = []
+    for d in deps:
+        key = (d.ecosystem, normalize_pypi(d.name) if d.ecosystem == PYPI else d.name)
+        if key not in seen:
+            seen.add(key)
+            unique.append(d)
+    return unique
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -191,7 +191,8 @@ class Registry:
 
     # ------------------------------------------------------------ PyPI
     def _lookup_pypi(self, name: str) -> PackageInfo:
-        status, body = self._fetch(f"https://pypi.org/pypi/{quote(name)}/json")
+        # Query by registry identity (PEP 503): "FLASK" and "Foo_Bar" are flask and foo-bar (AGENTS.md rule 7).
+        status, body = self._fetch(f"https://pypi.org/pypi/{quote(normalize_pypi(name))}/json")
         if status == 404:
             return PackageInfo(name, PYPI, False, note="PyPI 404")
         if status != 200 or not isinstance(body, dict):
