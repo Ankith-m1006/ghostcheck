@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     ident = lambda f: (f.ecosystem, normalize_pypi(f.package) if f.ecosystem == PYPI else f.package)
     unverified = len({ident(f) for f in findings if f.rule == UNVERIFIED})
     if args.json:
-        print(json.dumps({"checked": len(deps), "offline": args.offline, "exit_code": code, "unverified": unverified,
+        print(json.dumps({"version": __version__, "checked": len(deps), "offline": args.offline, "exit_code": code, "unverified": unverified,
                           "findings": [asdict(f) for f in findings]}, indent=2))
     else:
         mode = " (offline)" if args.offline else ""

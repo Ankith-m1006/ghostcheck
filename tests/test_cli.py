@@ -178,3 +178,23 @@ def test_duplicate_keeps_the_file_and_line_source(fake_network, tmp_path, capsys
     assert run(["--json", str(req), "--pip", "pip install no-such-pkg-here"], tmp_path) == 1
     data = json.loads(capsys.readouterr().out)
     assert [f["source"] for f in data["findings"] if f["rule"] == "not-found"] == ["requirements.txt:2"]
+
+
+def test_json_reports_the_ghostcheck_version(fake_network, tmp_path, capsys):
+    """Issue #8: CI keeps the JSON, so it must say which version made the decision."""
+    from ghostcheck import __version__
+    assert run(["--json", "--pip", "pip install requests"], tmp_path) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["version"] == __version__
+    assert {"checked", "offline", "exit_code", "unverified", "findings"} <= set(data)  # nothing else changed
+
+
+def test_version_has_a_single_source():
+    """Issue #8: pyproject.toml must read the version from ghostcheck.__version__, not hard-code a second copy."""
+    import pathlib
+    import re
+    text = (pathlib.Path(__file__).parent.parent / "pyproject.toml").read_text("utf-8")
+    project = text.split("[project]", 1)[1].split("\n[", 1)[0]  # plain text, so it runs on Python 3.10 (no tomllib)
+    assert not re.search(r"^version\s*=", project, re.M)
+    assert re.search(r'^dynamic\s*=\s*\[[^\]]*"version"', project, re.M)
+    assert re.search(r'^version\s*=\s*\{\s*attr\s*=\s*"ghostcheck.__version__"\s*\}', text.split("[tool.setuptools.dynamic]", 1)[1], re.M)
