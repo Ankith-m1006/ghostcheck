@@ -104,6 +104,16 @@ _NPM_CMD = re.compile(
     r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:npm\s+(?:install|i|add)|yarn\s+(?:global\s+)?add|pnpm\s+(?:add|install|i)|bun\s+(?:add|install|i))\s+(.+)",
     re.I,
 )
+# Package runners download a package and run it in one step (issue #13). Only the package is a
+# dependency; everything after it is the program's own arguments.
+_NPM_RUNNER = re.compile(r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:npx|bunx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx)\s+(.+)", re.I)
+_PY_RUNNER = re.compile(r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:uvx|uv\s+tool\s+run|pipx\s+run)\s+(.+)", re.I)
+# runner flags whose value IS the package to fetch
+_RUNNER_PACKAGE_FLAGS = {"--package", "-p", "--from", "--spec"}
+# runner flags that take some other value
+_RUNNER_VALUE_FLAGS = {"--registry", "--cache", "--userconfig", "--node-options", "-c", "--call", "--python",
+                       "--index", "--index-url", "--default-index", "--with", "--with-requirements",
+                       "--pip-args", "--constraint", "--directory"}
 # pip flags that take a value
 _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-i", "--index-url",
                     "--extra-index-url", "-f", "--find-links", "--target", "-t", "--prefix", "--root",
@@ -140,7 +150,30 @@ def _segments(text: str) -> list[str]:
     return [p for p in (s.strip().lstrip("$>").strip() for s in out) if p]
 
 
-_INSTALLER_WORD = re.compile(r"(?<![\w-])(?:sudo\s+)?(?:python[0-9.]*\s+-m\s+)?(?:pip[0-9.]*|pipx|uv|poetry|pipenv|conda|mamba|npm|yarn|pnpm|bun)\s", re.I)
+_INSTALLER_WORD = re.compile(r"(?<![\w-])(?:sudo\s+)?(?:python[0-9.]*\s+-m\s+)?(?:pip[0-9.]*|pipx|uvx|uv|poetry|pipenv|conda|mamba|npx|bunx|npm|yarn|pnpm|bun)\s", re.I)
+
+
+def _runner_package(arg_text: str) -> str | None:
+    """The one package a runner fetches: the value of --package/-p/--from/--spec, else the first
+    positional word. Nothing after it is a package (it is the program and its arguments)."""
+    tokens = _split_args(arg_text)
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--":
+            i += 1
+            continue
+        flag, eq, val = tok.partition("=")
+        if flag in _RUNNER_PACKAGE_FLAGS:
+            return val if eq else (tokens[i + 1] if i + 1 < len(tokens) else None)
+        if flag in _RUNNER_VALUE_FLAGS:
+            i += 1 if eq else 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        return tok
+    return None
 
 
 def _split_line(line: str, quotes: bool) -> list[str] | None:
@@ -190,6 +223,11 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
                 name = requirement_name(tok)
                 if name and not re.fullmatch(r"[0-9.]+", name):
                     deps.append(Dependency(name, PYPI, source))
+        for m in _PY_RUNNER.finditer(line):
+            spec = _runner_package(m.group(1))
+            name = requirement_name(spec) if spec else None
+            if name and not re.fullmatch(r"[0-9.]+", name):
+                deps.append(Dependency(name, PYPI, source))
     return _dedupe(deps, normalize_pypi)
 
 
@@ -211,6 +249,11 @@ def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency
                 name = npm_spec_name(tok)
                 if name:
                     deps.append(Dependency(name, NPM, source))
+        for m in _NPM_RUNNER.finditer(line):
+            spec = _runner_package(m.group(1))
+            name = npm_spec_name(spec) if spec else None
+            if name:
+                deps.append(Dependency(name, NPM, source))
     return _dedupe(deps, str)
 
 

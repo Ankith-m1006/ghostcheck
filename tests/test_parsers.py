@@ -168,3 +168,38 @@ def test_answer_extraction_javascript():
 def test_normalize_pypi():
     assert normalize_pypi("Python_Dateutil") == "python-dateutil"
     assert normalize_pypi("zope.interface") == "zope-interface"
+
+
+# Issue #13: package runners download and run a package in one step.
+@pytest.mark.parametrize("cmd,want", [
+    ("npx some-ghost-cli --port 3000", ["some-ghost-cli"]),
+    ("npx -y @scope/ghost-mcp@1.2.0 serve", ["@scope/ghost-mcp"]),
+    ("npx --yes ghost-tool", ["ghost-tool"]),
+    ("npx --package ghost-pkg ghost-bin", ["ghost-pkg"]),
+    ("npx -p ghost-pkg ghost-bin", ["ghost-pkg"]),
+    ("npm exec -- ghost-tool --flag", ["ghost-tool"]),
+    ("npm exec ghost-tool", ["ghost-tool"]),
+    ("bunx ghost-tool init", ["ghost-tool"]),
+    ("pnpm dlx create-ghost-app my-app", ["create-ghost-app"]),
+    ("yarn dlx ghost-tool@latest run", ["ghost-tool"]),
+])
+def test_npm_package_runners(cmd, want):
+    assert [d.name for d in parse_npm_command(cmd)] == want
+
+
+@pytest.mark.parametrize("cmd,want", [
+    ("uvx ghost-cli --help", ["ghost-cli"]),
+    ("uvx --from ghost-pkg ghost-cmd", ["ghost-pkg"]),
+    ("uvx ghost-cli==1.2 run", ["ghost-cli"]),
+    ("pipx run ghost-cli --version", ["ghost-cli"]),
+    ("pipx run --spec ghost-pkg ghost-cmd", ["ghost-pkg"]),
+])
+def test_python_package_runners(cmd, want):
+    assert [d.name for d in parse_pip_command(cmd)] == want
+
+
+def test_runners_inside_chains_and_prose():
+    text = "I'll start the server: cd app && npx -y ghost-mcp-server; then uvx ghost-lint ."
+    assert [d.name for d in parse_npm_command(text)] == ["ghost-mcp-server"]
+    assert [d.name for d in parse_pip_command(text)] == ["ghost-lint"]
+
