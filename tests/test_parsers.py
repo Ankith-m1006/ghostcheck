@@ -168,3 +168,66 @@ def test_answer_extraction_javascript():
 def test_normalize_pypi():
     assert normalize_pypi("Python_Dateutil") == "python-dateutil"
     assert normalize_pypi("zope.interface") == "zope-interface"
+
+
+# Issue #13: package runners download and run a package in one step.
+@pytest.mark.parametrize("cmd,want", [
+    ("npx some-ghost-cli --port 3000", ["some-ghost-cli"]),
+    ("npx -y @scope/ghost-mcp@1.2.0 serve", ["@scope/ghost-mcp"]),
+    ("npx --yes ghost-tool", ["ghost-tool"]),
+    ("npx --package ghost-pkg ghost-bin", ["ghost-pkg"]),
+    ("npx -p ghost-pkg ghost-bin", ["ghost-pkg"]),
+    ("npm exec -- ghost-tool --flag", ["ghost-tool"]),
+    ("npm exec ghost-tool", ["ghost-tool"]),
+    ("bunx ghost-tool init", ["ghost-tool"]),
+    ("pnpm dlx create-ghost-app my-app", ["create-ghost-app"]),
+    ("yarn dlx ghost-tool@latest run", ["ghost-tool"]),
+])
+def test_npm_package_runners(cmd, want):
+    assert [d.name for d in parse_npm_command(cmd)] == want
+
+
+@pytest.mark.parametrize("cmd,want", [
+    ("uvx ghost-cli --help", ["ghost-cli"]),
+    ("uvx --from ghost-pkg ghost-cmd", ["ghost-pkg"]),
+    ("uvx ghost-cli==1.2 run", ["ghost-cli"]),
+    ("pipx run ghost-cli --version", ["ghost-cli"]),
+    ("pipx run --spec ghost-pkg ghost-cmd", ["ghost-pkg"]),
+])
+def test_python_package_runners(cmd, want):
+    assert [d.name for d in parse_pip_command(cmd)] == want
+
+
+def test_runners_inside_chains_and_prose():
+    text = "I'll start the server: cd app && npx -y ghost-mcp-server; then uvx ghost-lint ."
+    assert [d.name for d in parse_npm_command(text)] == ["ghost-mcp-server"]
+    assert [d.name for d in parse_pip_command(text)] == ["ghost-lint"]
+
+
+
+# Qodo review of #14: each case is the reviewer's own example.
+@pytest.mark.parametrize("cmd,want", [
+    ("npm exec --workspace app ghost-tool", ["ghost-tool"]),        # 1: option values are not the package
+    ("npm exec foo --package=ghost-pkg", ["ghost-pkg"]),             # 2: npm exec reads --package anywhere before --
+    ("npx serve -p 3000", ["serve"]),                                 #    ...but npx stops at the first positional
+    ("(npx ghost-tool)", ["ghost-tool"]),                             # 5: closing ) is not part of the name
+    ("I'll use npx to scaffold the app", []),                         # 4: prose mention, not a command
+    ("Run it with: npx -y ghost-mcp", ["ghost-mcp"]),                 #    ...a command after a colon still counts
+])
+def test_npm_runner_review_cases(cmd, want):
+    assert [d.name for d in parse_npm_command(cmd)] == want
+
+
+@pytest.mark.parametrize("cmd,want", [
+    ("pipx run --fetch-python missing ghost-tool", ["ghost-tool"]),   # 1
+    ("uvx --with ghost-plugin ruff", ["ghost-plugin", "ruff"]),       # 3: --with installs extra packages
+    ("uvx --with a-plugin,b-plugin ruff", ["a-plugin", "b-plugin", "ruff"]),
+    ("uvx -p 3.12 ghost-cli", ["ghost-cli"]),                         #    uvx -p is --python, not a package
+])
+def test_python_runner_review_cases(cmd, want):
+    assert [d.name for d in parse_pip_command(cmd)] == want
+
+
+def test_bare_runner_line_in_answer_is_checked():
+    # 6: an unfenced command line in an agent answer.
+    assert extract_from_answer("Start it:\nnpx -y ghost-mcp\n", "javascript").npm_installs == ["ghost-mcp"]
