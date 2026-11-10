@@ -203,3 +203,31 @@ def test_runners_inside_chains_and_prose():
     assert [d.name for d in parse_npm_command(text)] == ["ghost-mcp-server"]
     assert [d.name for d in parse_pip_command(text)] == ["ghost-lint"]
 
+
+
+# Qodo review of #14: each case is the reviewer's own example.
+@pytest.mark.parametrize("cmd,want", [
+    ("npm exec --workspace app ghost-tool", ["ghost-tool"]),        # 1: option values are not the package
+    ("npm exec foo --package=ghost-pkg", ["ghost-pkg"]),             # 2: npm exec reads --package anywhere before --
+    ("npx serve -p 3000", ["serve"]),                                 #    ...but npx stops at the first positional
+    ("(npx ghost-tool)", ["ghost-tool"]),                             # 5: closing ) is not part of the name
+    ("I'll use npx to scaffold the app", []),                         # 4: prose mention, not a command
+    ("Run it with: npx -y ghost-mcp", ["ghost-mcp"]),                 #    ...a command after a colon still counts
+])
+def test_npm_runner_review_cases(cmd, want):
+    assert [d.name for d in parse_npm_command(cmd)] == want
+
+
+@pytest.mark.parametrize("cmd,want", [
+    ("pipx run --fetch-python missing ghost-tool", ["ghost-tool"]),   # 1
+    ("uvx --with ghost-plugin ruff", ["ghost-plugin", "ruff"]),       # 3: --with installs extra packages
+    ("uvx --with a-plugin,b-plugin ruff", ["a-plugin", "b-plugin", "ruff"]),
+    ("uvx -p 3.12 ghost-cli", ["ghost-cli"]),                         #    uvx -p is --python, not a package
+])
+def test_python_runner_review_cases(cmd, want):
+    assert [d.name for d in parse_pip_command(cmd)] == want
+
+
+def test_bare_runner_line_in_answer_is_checked():
+    # 6: an unfenced command line in an agent answer.
+    assert extract_from_answer("Start it:\nnpx -y ghost-mcp\n", "javascript").npm_installs == ["ghost-mcp"]
