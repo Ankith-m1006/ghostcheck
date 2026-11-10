@@ -108,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
         meds = sum(f.severity == MEDIUM for f in findings)
         tail = "  -> do not install until reviewed" if highs else ("  -> not verified: check them or pass --allow-unverified" if code == 3 else "")
         print(f"{highs} high, {meds} medium, {unverified} not verified" + tail)
-    if args.explain and findings:
+    if args.explain and findings and args.offline:
+        # AGENTS.md rule 4: --offline never touches the network, and the explainer calls a hosted model (#10).
+        print("ghostcheck: --explain skipped: it needs the network and --offline is set", file=sys.stderr)  # stderr keeps --json valid
+    elif args.explain and findings:
         from .explain import explain
         # Unverified packages are INFO findings but decide the exit code, so they are explained too.
         print("\n" + explain([f for f in findings if f.severity != INFO or f.rule == UNVERIFIED]))
