@@ -151,14 +151,35 @@ def test_unverified_count_uses_registry_identity(monkeypatch, tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["unverified"] == 1
 
 
+def _network_down(url, method="GET", headers=None):
+    raise OSError("network unreachable")
+
+
 def test_explain_mentions_unverified_packages(monkeypatch, tmp_path, capsys):
-    """Qodo review of #4: an unverified-only run must not print 'No findings'."""
+    """Qodo review of #4: an unverified-only run must not print 'No findings'.
+    Unverified here because the registry is unreachable (not --offline, which must not call the explainer, #10)."""
     import ghostcheck.explain as explain_mod
     seen = {}
+    monkeypatch.setattr(registry_mod, "_requests_fetcher", lambda: _network_down)
+    monkeypatch.setattr(registry_mod.time, "sleep", lambda s: None)
     monkeypatch.setattr(explain_mod, "explain", lambda fs, *a, **k: seen.setdefault("rules", [f.rule for f in fs]) and "ok")
-    assert run(["--offline", "--explain", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
+    assert run(["--explain", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
     assert seen["rules"] == ["not-checked"]
     assert "No findings" not in capsys.readouterr().out
+
+
+def test_offline_explain_never_calls_the_explainer(monkeypatch, tmp_path, capsys):
+    """Issue #10 (AGENTS.md rule 4): --offline must never touch the network, --explain included."""
+    import ghostcheck.explain as explain_mod
+
+    def no_network(*a, **k):
+        raise AssertionError("--offline --explain called the explainer (network)")
+
+    monkeypatch.setattr(explain_mod, "explain", no_network)
+    assert run(["--offline", "--explain", "--json", "--pip", "pip install some-unknown-thing"], tmp_path) == 3
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["exit_code"] == 3  # stdout stays valid JSON
+    assert "skipped" in captured.err.lower() and "offline" in captured.err.lower()
 
 
 def test_each_package_checked_once_across_inputs(fake_network, tmp_path, capsys):
