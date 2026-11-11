@@ -11,6 +11,7 @@ Exit codes: 0 = no HIGH findings, 1 = at least one HIGH finding, 2 = usage / inp
 from __future__ import annotations
 
 import argparse
+import re
 import json
 import os
 import sys
@@ -29,6 +30,24 @@ def default_cache_path() -> Path:
     return p if p.suffix == ".json" else p / "ghostcheck" / "registry_cache.json"
 
 
+_INCLUDE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)(\S+)")
+
+
+def _requirements_with_includes(path: Path, text: str) -> list[Dependency]:
+    """Packages in a requirements file plus the files it includes with -r / --requirement (issue #15)."""
+    deps = parse_requirements(text, source=path.name)
+    for raw in text.splitlines():
+        m = _INCLUDE.match(raw.split(" #", 1)[0].strip())
+        if not m:
+            continue
+        inc = path.parent / m.group(1)
+        try:
+            deps += _requirements_with_includes(inc, inc.read_text("utf-8"))
+        except OSError:
+            continue
+    return deps
+
+
 def load_dependencies(args) -> list[Dependency]:
     deps: list[Dependency] = []
     # Files first: their sources carry a line number, which is the most useful place to point a finding at.
@@ -38,7 +57,7 @@ def load_dependencies(args) -> list[Dependency]:
         if path.name.endswith(".json"):
             deps += parse_package_json(text, source=path.name)
         else:
-            deps += parse_requirements(text, source=path.name)
+            deps += _requirements_with_includes(path, text)
     if args.pip:
         deps += parse_pip_command(args.pip)
     if args.npm:

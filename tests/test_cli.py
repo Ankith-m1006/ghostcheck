@@ -219,3 +219,20 @@ def test_version_has_a_single_source():
     assert not re.search(r"^version\s*=", project, re.M)
     assert re.search(r'^dynamic\s*=\s*\[[^\]]*"version"', project, re.M)
     assert re.search(r'^version\s*=\s*\{\s*attr\s*=\s*"ghostcheck.__version__"\s*\}', text.split("[tool.setuptools.dynamic]", 1)[1], re.M)
+
+
+def test_requirements_includes_are_followed(tmp_path):
+    # Issue #15, criteria 1 and 2: -r / --requirement / --requirement= are followed, relative to the including file.
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "base.txt").write_text("requests==2.31.0\n", "utf-8")
+    (tmp_path / "sub" / "dev.txt").write_text("\npytest\n", "utf-8")
+    (tmp_path / "extra.txt").write_text("flask\n", "utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r base.txt\n--requirement sub/dev.txt\n--requirement=extra.txt\nnumpy\n", "utf-8")
+
+    class A:
+        files = [str(top)]
+        pip = npm = cmd = None
+
+    deps = {d.name: d.source for d in cli.load_dependencies(A())}
+    assert deps == {"numpy": "requirements.txt:4", "requests": "base.txt:1", "pytest": "dev.txt:2", "flask": "extra.txt:1"}
