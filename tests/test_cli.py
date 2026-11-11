@@ -4,6 +4,7 @@ import pytest
 
 import ghostcheck.registry as registry_mod
 from ghostcheck import cli
+from ghostcheck.rules import UNVERIFIED, exit_code
 
 
 @pytest.fixture
@@ -236,3 +237,33 @@ def test_requirements_includes_are_followed(tmp_path):
 
     deps = {d.name: d.source for d in cli.load_dependencies(A())}
     assert deps == {"numpy": "requirements.txt:4", "requests": "base.txt:1", "pytest": "dev.txt:2", "flask": "extra.txt:1"}
+
+
+def _args(path):
+    class A:
+        files = [str(path)]
+        pip = npm = cmd = None
+    return A()
+
+
+def test_requirements_include_cycles_are_read_once(tmp_path):
+    # Issue #15 criterion 3 (Qodo finding on #16): cycles and repeated includes must not loop or re-read.
+    (tmp_path / "a.txt").write_text("-r b.txt\n-r a.txt\nrequests\n", "utf-8")
+    (tmp_path / "b.txt").write_text("-r a.txt\nflask\n", "utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r a.txt\n-r b.txt\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert sorted(d.name for d in deps) == ["flask", "requests"]
+    assert problems == []
+
+
+def test_unreadable_includes_fail_closed(tmp_path):
+    # Issue #15 criterion 4 (Qodo finding on #16): a missing or undecodable include is "not checked", so exit 3.
+    (tmp_path / "bad.txt").write_bytes(b"\xff\xfe\x00not utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r missing.txt\n--requirement=bad.txt\nnumpy\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert [d.name for d in deps] == ["numpy"]
+    assert [(p.rule, p.source) for p in problems] == [(UNVERIFIED, "requirements.txt:1"), (UNVERIFIED, "requirements.txt:2")]
+    assert "missing.txt" in problems[0].message and "bad.txt" in problems[1].message
+    assert exit_code(problems) == 3

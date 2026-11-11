@@ -33,31 +33,45 @@ def default_cache_path() -> Path:
 _INCLUDE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)(\S+)")
 
 
-def _requirements_with_includes(path: Path, text: str) -> list[Dependency]:
-    """Packages in a requirements file plus the files it includes with -r / --requirement (issue #15)."""
+def _requirements_with_includes(path: Path, text: str, seen: set[Path], problems: list[Finding]) -> list[Dependency]:
+    """Packages in a requirements file plus the files it includes with -r / --requirement (issue #15).
+
+    Each file is read once per run (cycles and repeats are skipped), and an include that cannot be read or decoded
+    becomes a "not checked" finding, so the run fails closed (AGENTS.md rule 1) instead of skipping its packages.
+    """
+    seen.add(path.resolve())
     deps = parse_requirements(text, source=path.name)
-    for raw in text.splitlines():
+    for lineno, raw in enumerate(text.splitlines(), 1):
         m = _INCLUDE.match(raw.split(" #", 1)[0].strip())
         if not m:
             continue
         inc = path.parent / m.group(1)
-        try:
-            deps += _requirements_with_includes(inc, inc.read_text("utf-8"))
-        except OSError:
+        if inc.resolve() in seen:
             continue
+        try:
+            inc_text = inc.read_text("utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            problems.append(Finding(INFO, UNVERIFIED, f"-r {m.group(1)}", PYPI,
+                                    f"included file {m.group(1)} could not be read ({type(exc).__name__}); its packages were not checked",
+                                    source=f"{path.name}:{lineno}"))
+            continue
+        deps += _requirements_with_includes(inc, inc_text, seen, problems)
     return deps
 
 
-def load_dependencies(args) -> list[Dependency]:
+def load_inputs(args) -> tuple[list[Dependency], list[Finding]]:
+    """Dependencies from every input, plus "not checked" findings for inputs that could not be read."""
     deps: list[Dependency] = []
+    problems: list[Finding] = []
+    seen: set[Path] = set()
     # Files first: their sources carry a line number, which is the most useful place to point a finding at.
     for f in args.files:
         path = Path(f)
         text = path.read_text("utf-8")
         if path.name.endswith(".json"):
             deps += parse_package_json(text, source=path.name)
-        else:
-            deps += _requirements_with_includes(path, text)
+        elif path.resolve() not in seen:
+            deps += _requirements_with_includes(path, text, seen, problems)
     if args.pip:
         deps += parse_pip_command(args.pip)
     if args.npm:
@@ -65,14 +79,18 @@ def load_dependencies(args) -> list[Dependency]:
     if args.cmd:  # any shell command or agent output: every pip/uv/poetry/pipx and npm/yarn/pnpm/bun install in it
         deps += parse_pip_command(args.cmd, source="command") + parse_npm_command(args.cmd, source="command")
     # One check per registry identity across all inputs (AGENTS.md rule 7); a file occurrence beats a command one.
-    seen: set[tuple[str, str]] = set()
+    seen_ids: set[tuple[str, str]] = set()
     unique: list[Dependency] = []
     for d in deps:
         key = (d.ecosystem, normalize_pypi(d.name) if d.ecosystem == PYPI else d.name)
-        if key not in seen:
-            seen.add(key)
+        if key not in seen_ids:
+            seen_ids.add(key)
             unique.append(d)
-    return unique
+    return unique, problems
+
+
+def load_dependencies(args) -> list[Dependency]:
+    return load_inputs(args)[0]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,13 +112,13 @@ def main(argv: list[str] | None = None) -> int:
         print("ghostcheck: give a file, --pip, --npm or --cmd", file=sys.stderr)
         return 2
     try:
-        deps = load_dependencies(args)
+        deps, input_findings = load_inputs(args)
     except (OSError, ValueError) as exc:
         print(f"ghostcheck: {exc}", file=sys.stderr)
         return 2
 
     registry = Registry(cache_path=args.cache or default_cache_path(), offline=args.offline)
-    findings: list[Finding] = []
+    findings: list[Finding] = list(input_findings)
     for dep in deps:
         found, _ = check_dependency(dep, registry)
         findings += found
