@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -237,7 +238,7 @@ def test_requirements_includes_are_followed(tmp_path):
         pip = npm = cmd = None
 
     deps = {d.name: d.source for d in cli.load_dependencies(A())}
-    assert deps == {"numpy": "requirements.txt:4", "requests": "base.txt:1", "pytest": "dev.txt:2", "flask": "extra.txt:1"}
+    assert deps == {"numpy": "requirements.txt:4", "requests": "base.txt:1", "pytest": "sub/dev.txt:2", "flask": "extra.txt:1"}
 
 
 def _args(path):
@@ -287,3 +288,36 @@ def test_symlink_loop_include_fails_closed(tmp_path, monkeypatch):
     assert [d.name for d in deps] == ["numpy"]
     assert [(p.rule, p.source) for p in problems] == [(UNVERIFIED, "requirements.txt:1")]
     assert "RuntimeError" in problems[0].message
+
+
+def test_include_sources_keep_their_relative_path(tmp_path):
+    # Issue #17: same file name in two folders must not print the same source; ../ stays relative.
+    for d in ("a", "b", "proj"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "a" / "dev.txt").write_text("flask\n", "utf-8")
+    (tmp_path / "b" / "dev.txt").write_text("pytest\n", "utf-8")
+    (tmp_path / "shared.txt").write_text("requests\n", "utf-8")
+    top = tmp_path / "proj" / "requirements.txt"
+    top.write_text("-r ../a/dev.txt\n-r ../b/dev.txt\n-r ../shared.txt\n-r gone.txt\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert {d.name: d.source for d in deps} == {"flask": "../a/dev.txt:1", "pytest": "../b/dev.txt:1", "requests": "../shared.txt:1"}
+    assert [p.source for p in problems] == ["requirements.txt:4"]
+
+
+def test_include_on_another_drive_uses_absolute_path_exception(tmp_path, monkeypatch):
+    # Qodo local review of #17: os.path.relpath raises ValueError across Windows drives.
+    # No relative path exists then, so the label falls back to the absolute path with / separators.
+    real_relpath = cli.os.path.relpath
+
+    def relpath(path, start=None):
+        if Path(path).name == "other-drive.txt":
+            raise ValueError("path is on mount 'D:', start on mount 'C:'")
+        return real_relpath(path, start)
+
+    monkeypatch.setattr(cli.os.path, "relpath", relpath)
+    (tmp_path / "other-drive.txt").write_text("flask\n", "utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r other-drive.txt\nnumpy\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert {d.name: d.source for d in deps} == {"numpy": "requirements.txt:2", "flask": (tmp_path / "other-drive.txt").as_posix() + ":1"}
+    assert problems == []

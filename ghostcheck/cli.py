@@ -33,14 +33,30 @@ def default_cache_path() -> Path:
 _INCLUDE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)(\S+)")
 
 
-def _requirements_with_includes(path: Path, text: str, seen: set[Path], problems: list[Finding]) -> list[Dependency]:
+def _source_label(path: Path, root: Path) -> str:
+    """Path of a requirements file relative to the folder of the top-level file, with / on every OS (issue #17).
+
+    The one permitted exception to issue #17 criterion 4 ("never an absolute path"): on Windows a file on another
+    drive has no relative path (relpath raises ValueError), so its absolute path, with / separators, is used as the
+    only label that still says which file it was. See the decision on #17.
+    """
+    try:
+        return Path(os.path.relpath(path, root)).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _requirements_with_includes(path: Path, text: str, seen: set[Path], problems: list[Finding],
+                                root: Path | None = None) -> list[Dependency]:
     """Packages in a requirements file plus the files it includes with -r / --requirement (issue #15).
 
     Each file is read once per run (cycles and repeats are skipped), and an include that cannot be read or decoded
     becomes a "not checked" finding, so the run fails closed (AGENTS.md rule 1) instead of skipping its packages.
     """
+    root = path.parent if root is None else root
+    label = _source_label(path, root)
     seen.add(path.resolve())
-    deps = parse_requirements(text, source=path.name)
+    deps = parse_requirements(text, source=label)
     for lineno, raw in enumerate(text.splitlines(), 1):
         m = _INCLUDE.match(raw.split(" #", 1)[0].strip())
         if not m:
@@ -54,9 +70,9 @@ def _requirements_with_includes(path: Path, text: str, seen: set[Path], problems
         except (OSError, UnicodeDecodeError, RuntimeError) as exc:
             problems.append(Finding(INFO, UNVERIFIED, f"-r {m.group(1)}", PYPI,
                                     f"included file {m.group(1)} could not be read ({type(exc).__name__}); its packages were not checked",
-                                    source=f"{path.name}:{lineno}"))
+                                    source=f"{label}:{lineno}"))
             continue
-        deps += _requirements_with_includes(inc, inc_text, seen, problems)
+        deps += _requirements_with_includes(inc, inc_text, seen, problems, root)
     return deps
 
 
