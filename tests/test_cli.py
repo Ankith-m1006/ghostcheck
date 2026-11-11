@@ -1,9 +1,11 @@
 import json
+import os
 
 import pytest
 
 import ghostcheck.registry as registry_mod
 from ghostcheck import cli
+from ghostcheck.rules import UNVERIFIED, exit_code
 
 
 @pytest.fixture
@@ -219,3 +221,69 @@ def test_version_has_a_single_source():
     assert not re.search(r"^version\s*=", project, re.M)
     assert re.search(r'^dynamic\s*=\s*\[[^\]]*"version"', project, re.M)
     assert re.search(r'^version\s*=\s*\{\s*attr\s*=\s*"ghostcheck.__version__"\s*\}', text.split("[tool.setuptools.dynamic]", 1)[1], re.M)
+
+
+def test_requirements_includes_are_followed(tmp_path):
+    # Issue #15, criteria 1 and 2: -r / --requirement / --requirement= are followed, relative to the including file.
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "base.txt").write_text("requests==2.31.0\n", "utf-8")
+    (tmp_path / "sub" / "dev.txt").write_text("\npytest\n", "utf-8")
+    (tmp_path / "extra.txt").write_text("flask\n", "utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r base.txt\n--requirement sub/dev.txt\n--requirement=extra.txt\nnumpy\n", "utf-8")
+
+    class A:
+        files = [str(top)]
+        pip = npm = cmd = None
+
+    deps = {d.name: d.source for d in cli.load_dependencies(A())}
+    assert deps == {"numpy": "requirements.txt:4", "requests": "base.txt:1", "pytest": "dev.txt:2", "flask": "extra.txt:1"}
+
+
+def _args(path):
+    class A:
+        files = [str(path)]
+        pip = npm = cmd = None
+    return A()
+
+
+def test_requirements_include_cycles_are_read_once(tmp_path):
+    # Issue #15 criterion 3 (Qodo finding on #16): cycles and repeated includes must not loop or re-read.
+    (tmp_path / "a.txt").write_text("-r b.txt\n-r a.txt\nrequests\n", "utf-8")
+    (tmp_path / "b.txt").write_text("-r a.txt\nflask\n", "utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r a.txt\n-r b.txt\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert sorted(d.name for d in deps) == ["flask", "requests"]
+    assert problems == []
+
+
+def test_unreadable_includes_fail_closed(tmp_path):
+    # Issue #15 criterion 4 (Qodo finding on #16): a missing or undecodable include is "not checked", so exit 3.
+    (tmp_path / "bad.txt").write_bytes(b"\xff\xfe\x00not utf-8")
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r missing.txt\n--requirement=bad.txt\nnumpy\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert [d.name for d in deps] == ["numpy"]
+    assert [(p.rule, p.source) for p in problems] == [(UNVERIFIED, "requirements.txt:1"), (UNVERIFIED, "requirements.txt:2")]
+    assert "missing.txt" in problems[0].message and "bad.txt" in problems[1].message
+    assert exit_code(problems) == 3
+
+
+def test_symlink_loop_include_fails_closed(tmp_path, monkeypatch):
+    # Qodo finding on #16 (0442d8e): Path.resolve() on a looping symlink raises RuntimeError before Python 3.13.
+    # Simulated so the test runs on every OS (Windows needs admin rights to create symlinks).
+    real_resolve = cli.Path.resolve
+
+    def resolve(self, *a, **k):
+        if self.name == "loop.txt":
+            raise RuntimeError("Symlink loop from 'loop.txt'")
+        return real_resolve(self, *a, **k)
+
+    monkeypatch.setattr(cli.Path, "resolve", resolve)
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r loop.txt\nnumpy\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert [d.name for d in deps] == ["numpy"]
+    assert [(p.rule, p.source) for p in problems] == [(UNVERIFIED, "requirements.txt:1")]
+    assert "RuntimeError" in problems[0].message
