@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -267,3 +268,22 @@ def test_unreadable_includes_fail_closed(tmp_path):
     assert [(p.rule, p.source) for p in problems] == [(UNVERIFIED, "requirements.txt:1"), (UNVERIFIED, "requirements.txt:2")]
     assert "missing.txt" in problems[0].message and "bad.txt" in problems[1].message
     assert exit_code(problems) == 3
+
+
+def test_symlink_loop_include_fails_closed(tmp_path, monkeypatch):
+    # Qodo finding on #16 (0442d8e): Path.resolve() on a looping symlink raises RuntimeError before Python 3.13.
+    # Simulated so the test runs on every OS (Windows needs admin rights to create symlinks).
+    real_resolve = cli.Path.resolve
+
+    def resolve(self, *a, **k):
+        if self.name == "loop.txt":
+            raise RuntimeError("Symlink loop from 'loop.txt'")
+        return real_resolve(self, *a, **k)
+
+    monkeypatch.setattr(cli.Path, "resolve", resolve)
+    top = tmp_path / "requirements.txt"
+    top.write_text("-r loop.txt\nnumpy\n", "utf-8")
+    deps, problems = cli.load_inputs(_args(top))
+    assert [d.name for d in deps] == ["numpy"]
+    assert [(p.rule, p.source) for p in problems] == [(UNVERIFIED, "requirements.txt:1")]
+    assert "RuntimeError" in problems[0].message

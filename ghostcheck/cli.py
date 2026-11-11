@@ -46,11 +46,12 @@ def _requirements_with_includes(path: Path, text: str, seen: set[Path], problems
         if not m:
             continue
         inc = path.parent / m.group(1)
-        if inc.resolve() in seen:
-            continue
         try:
+            # resolve() raises RuntimeError on a symlink loop before Python 3.13 (OSError from 3.13 on).
+            if inc.resolve() in seen:
+                continue
             inc_text = inc.read_text("utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, RuntimeError) as exc:
             problems.append(Finding(INFO, UNVERIFIED, f"-r {m.group(1)}", PYPI,
                                     f"included file {m.group(1)} could not be read ({type(exc).__name__}); its packages were not checked",
                                     source=f"{path.name}:{lineno}"))
