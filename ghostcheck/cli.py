@@ -6,7 +6,11 @@
     ghostcheck --npm "npm install a b"
     ghostcheck --cmd "uv add a && npm i b"   # any installer, or a whole block of agent output
 
-Exit codes are listed below (built from EXIT_CODES, the one definition that --help also prints).
+Exit codes:
+    0 = no HIGH finding (MEDIUM and INFO findings may still be reported)
+    1 = at least one HIGH finding: do not install until reviewed
+    2 = usage or input error
+    3 = some packages could not be verified (fail closed); --allow-unverified accepts that risk
 """
 from __future__ import annotations
 
@@ -24,7 +28,8 @@ from .registry import Registry
 from .rules import HIGH, INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
 
 
-# Issue #19: the only definition of the exit codes; the module docstring and --help are built from it.
+# Issue #19: the one definition of the exit codes; --help is built from it, and the module docstring above
+# keeps a literal copy so the source file shows them too (tests/test_cli.py checks the two stay identical).
 EXIT_CODES = {
     0: "no HIGH finding (MEDIUM and INFO findings may still be reported)",
     1: "at least one HIGH finding: do not install until reviewed",
@@ -32,12 +37,6 @@ EXIT_CODES = {
     3: "some packages could not be verified (fail closed); --allow-unverified accepts that risk",
 }
 
-
-def _exit_code_lines(indent: str = "") -> str:
-    return "\n".join(f"{indent}{code} = {meaning}" for code, meaning in EXIT_CODES.items())
-
-
-__doc__ = (__doc__ or "") + "\nExit codes:\n" + _exit_code_lines("    ") + "\n"
 
 
 def default_cache_path() -> Path:
