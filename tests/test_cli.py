@@ -321,3 +321,31 @@ def test_include_on_another_drive_uses_absolute_path_exception(tmp_path, monkeyp
     deps, problems = cli.load_inputs(_args(top))
     assert {d.name: d.source for d in deps} == {"numpy": "requirements.txt:2", "flask": (tmp_path / "other-drive.txt").as_posix() + ":1"}
     assert problems == []
+
+
+def test_help_lists_every_exit_code(capsys):
+    # Issue #19: agents and CI read --help; exit 3 (not verified) must be explained there.
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--help"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    for code in ("0", "1", "2", "3"):
+        assert f"  {code}  " in out, f"exit code {code} missing from --help"
+    assert "not be verified" in out
+
+
+def test_docstring_and_help_share_one_source():
+    # Issue #19 criterion 3: one definition, so the docstring and --help cannot drift apart.
+    for code, meaning in cli.EXIT_CODES.items():
+        assert f"{code} = {meaning}" in cli.__doc__
+
+
+def test_source_docstring_lists_every_exit_code():
+    # Qodo PR review of #20 (Medium, requirement gap): the docstring in the SOURCE file must show the codes,
+    # not only the imported __doc__; this test keeps that literal copy identical to EXIT_CODES.
+    import ast
+    import inspect
+
+    doc = ast.get_docstring(ast.parse(inspect.getsource(cli)))
+    for code, meaning in cli.EXIT_CODES.items():
+        assert f"{code} = {meaning}" in doc, f"exit code {code} missing from the source docstring"

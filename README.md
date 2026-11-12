@@ -23,9 +23,9 @@ Exit codes, so an agent or CI step can gate the install:
 
 | Code | Meaning |
 |---|---|
-| 0 | nothing found |
+| 0 | no HIGH finding (MEDIUM and INFO findings may still be reported) |
 | 1 | at least one HIGH finding: do not install until reviewed |
-| 2 | usage error |
+| 2 | usage or input error |
 | 3 | some packages could not be verified (registry unreachable, or offline with no cached entry). ghostcheck fails closed; pass `--allow-unverified` to accept that risk |
 
 `--json` prints one object: `version` (the ghostcheck version that made the decision), `checked` (packages checked once each), `offline`, `exit_code`, `unverified` (packages that could not be verified), and `findings` (each with `severity`, `rule`, `package`, `ecosystem`, `message`, `source`).

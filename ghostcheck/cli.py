@@ -6,7 +6,11 @@
     ghostcheck --npm "npm install a b"
     ghostcheck --cmd "uv add a && npm i b"   # any installer, or a whole block of agent output
 
-Exit codes: 0 = no HIGH findings, 1 = at least one HIGH finding, 2 = usage / input error.
+Exit codes:
+    0 = no HIGH finding (MEDIUM and INFO findings may still be reported)
+    1 = at least one HIGH finding: do not install until reviewed
+    2 = usage or input error
+    3 = some packages could not be verified (fail closed); --allow-unverified accepts that risk
 """
 from __future__ import annotations
 
@@ -22,6 +26,17 @@ from . import __version__
 from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements
 from .registry import Registry
 from .rules import HIGH, INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
+
+
+# Issue #19: the one definition of the exit codes; --help is built from it, and the module docstring above
+# keeps a literal copy so the source file shows them too (tests/test_cli.py checks the two stay identical).
+EXIT_CODES = {
+    0: "no HIGH finding (MEDIUM and INFO findings may still be reported)",
+    1: "at least one HIGH finding: do not install until reviewed",
+    2: "usage or input error",
+    3: "some packages could not be verified (fail closed); --allow-unverified accepts that risk",
+}
+
 
 
 def default_cache_path() -> Path:
@@ -111,7 +126,12 @@ def load_dependencies(args) -> list[Dependency]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="ghostcheck", description="Flag ghost / suspicious dependencies before you install them.")
+    ap = argparse.ArgumentParser(
+        prog="ghostcheck",
+        description="Flag ghost / suspicious dependencies before you install them.",
+        epilog="exit codes:\n" + "\n".join(f"  {code}  {meaning}" for code, meaning in EXIT_CODES.items()),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("files", nargs="*", help="requirements*.txt or package.json files")
     ap.add_argument("--pip", metavar="CMD", help='a pip command, e.g. "pip install foo bar"')
     ap.add_argument("--npm", metavar="CMD", help='an npm command, e.g. "npm install foo"')
