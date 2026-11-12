@@ -42,8 +42,15 @@ Every change must leave `python -m pytest -q` green. Do not open a PR with a fai
 
 8. **No merge while a Qodo finding on the latest commit is open.** Before merging, confirm Qodo's newest review names the PR's head commit (its SHA appears in the review); if it doesn't, push nothing and wait for the re-review. Then every finding on that review must be fixed with a test, or dismissed in Qodo with a written reason by the repo owner, not by the PR author or the agent that wrote the change. A clean review of an earlier commit does not count. *Where:* every PR, at merge time (FACTORY.md step 9). *Why:* #4 was merged while its last review still flagged "Offline checks can contact Gemini" (https://github.com/Ankith-m1006/ghostcheck/pull/4#issuecomment-6725419122), so a rule 4 violation shipped and was only caught days later (#10).
 
+9. **Quality gate: a task is done only when its latest review passes the gate.** After every change, review it with Qodo (Reviewer on uncommitted code before committing; Review Resolver on PR findings after). Investigate each finding against the code and the ticket's criteria, then:
+   - **Must fix:** every valid **High** or **Medium** finding of any type (Bug, Rule violation, Requirement gap), each with a red test first when code changes.
+   - **Report, do not change:** every **Low** finding. List it in the PR body under "Low findings for the owner" with one line on why it was left.
+   - **Disputed:** a High/Medium finding the agent believes is wrong stays open with written evidence (file, line, test) and blocks completion until the owner decides.
+   Re-run the review after fixes until the latest review covers the current code (for a PR: names the head SHA) and nothing at or above Medium is open. If that is not reached within 2 fix rounds (FACTORY.md), report the task as **not done**, say what is blocking, and label the ticket `needs-human`. *Where:* every coding task (FACTORY.md steps 6-9). *Why:* rule 8 says when a merge is allowed; the factory also needs to know which findings it must resolve itself and which ones it should only raise, so Low nits never stall a ticket and High/Medium bugs never ship.
+
 ## Pull requests
 
 - One ticket per PR. Put the ticket link and its acceptance criteria in the PR body.
 - Say what you tested and paste the test output summary.
+- Include the quality gate result (rule 9): fixed High/Medium findings, disputed ones with evidence, and "Low findings for the owner".
 - Keep the diff small; no drive-by refactors.
