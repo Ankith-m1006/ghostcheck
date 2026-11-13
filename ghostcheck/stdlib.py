@@ -22,6 +22,12 @@ NODE_BUILTINS = frozenset(
 # Modules that only exist with the "node:" prefix (node:test, node:sqlite, node:sea).
 NODE_PREFIX_ONLY = frozenset({"test", "sqlite", "sea"})
 
+# Built-in names that are also real, maintained npm packages (browser polyfills used by bundlers).
+# Installing one of these is deliberate, so it is checked on the registry like any package (Qodo on #22).
+NPM_POLYFILLS = frozenset(
+    "assert buffer events path process punycode querystring stream string_decoder url util".split()
+)
+
 
 @lru_cache(maxsize=1)
 def python_stdlib() -> frozenset[str]:
@@ -36,8 +42,16 @@ def is_python_stdlib(module: str) -> bool:
     return module.split(".")[0] in python_stdlib()
 
 
+
 def is_node_builtin(specifier: str) -> bool:
     if specifier.startswith("node:"):
-        return True
+        return specifier[5:].split("/")[0] in NODE_BUILTINS  # node:fs yes, node:not-a-real-module no
     top = specifier.split("/")[0]
     return top in NODE_BUILTINS and top not in NODE_PREFIX_ONLY
+
+
+def is_node_builtin_install(name: str) -> bool:
+    """An npm install of something that is only a Node built-in: node:fs, fs, child_process (not buffer, util...)."""
+    if name.startswith("node:"):
+        return is_node_builtin(name)
+    return is_node_builtin(name) and name.split("/")[0] not in NPM_POLYFILLS

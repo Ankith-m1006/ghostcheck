@@ -166,3 +166,14 @@ def test_nearest_top_package():
 def test_bundled_lists_have_500_names_each():
     assert len(typosquat.top_packages(PYPI)) == 500
     assert len(typosquat.top_packages(NPM)) == 500
+
+
+def test_builtin_install_check_uses_the_shared_pypi_identity(monkeypatch):
+    # Qodo on #23 + AGENTS.md rule 7: one normalize_pypi for every PyPI comparison, no private copy
+    calls = []
+    real = rules.normalize_pypi
+    monkeypatch.setattr(rules, "normalize_pypi", lambda n: calls.append(n) or real(n))
+    rules._stdlib_identities.cache_clear()
+    found, _ = check_dependency(Dependency("JSON", PYPI, "cmd"), None)
+    assert [x.rule for x in found] == ["builtin-install"]
+    assert "JSON" in calls
