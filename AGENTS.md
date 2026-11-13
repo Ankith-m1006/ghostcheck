@@ -34,7 +34,11 @@ Every change must leave `python -m pytest -q` green. Do not open a PR with a fai
 
 4. **Registry lookups go through `registry.py`; the only other network call is the opt-in `--explain`.** No module except `registry.py` may query PyPI or npm. `gemma.py` (used only by `--explain`) is the one other module allowed to reach the network, and a default run must never import or call it (a test enforces this). Every request has a timeout; `--offline` must never touch the network; registry results are cached. *Why:* agents run ghostcheck inside sandboxes and CI where the network is slow, metered or blocked, and tests must stay offline.
 
-5. **Never flag the standard library or Node built-ins as ghosts.** Check `stdlib.py` before any "not found" finding. *Why:* `pip install json` style mistakes are common in agent output, and a false "ghost" on a built-in teaches users to ignore the tool.
+5. **Built-ins are never ghosts, and never silent.** Two cases, both decided with `stdlib.py` before any registry lookup:
+   - **Imported in code** (`import json`, `require('fs')`, `node:path`): not a dependency. No finding.
+   - **Named in an install command or dependency file** (`pip install json`, `npm install fs`, `npm install node:fs`): exactly one MEDIUM `builtin-install` finding saying there is nothing to install. Never `not-found`, `typosquat` or `llm-ghost`, and never dropped without a finding: a PyPI/npm package with a built-in's name (`asyncio`, `fs`) is an old backport or a placeholder, not the module.
+   - **Exceptions that are real packages:** npm polyfills that share a built-in's name (`buffer`, `events`, `util`, `process`... `NPM_POLYFILLS` in `stdlib.py`) are installed on purpose and are checked on the registry like any package. An alias (`fs@npm:memfs`) is checked as the package it really installs (`memfs`).
+   *Where:* `parsers.py` (`python_imports`, `js_imports` drop built-ins; command parsers keep them), `rules.py` (`check_dependency`). *Why:* `pip install json` style mistakes are common in agent output. A false "ghost" teaches users to ignore the tool, and a silent pass lets `pip install asyncio` shadow the real module. The first wording ("never flag the standard library") read as "drop it", which is what #22 did; #21 has the regression tests.
 
 6. **Pin exact versions.** Dependencies in `pyproject.toml` and `requirements*.txt` use `==`. *Why:* a supply-chain tool must not pull floating versions of its own dependencies.
 

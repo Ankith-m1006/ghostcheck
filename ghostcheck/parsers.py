@@ -300,6 +300,11 @@ def npm_spec_name(spec: str) -> str | None:
     spec = spec.strip().strip(",")
     if not spec or spec.startswith((".", "/", "~", "file:", "git", "http", "link:", "github:")) or "://" in spec:
         return None
+    alias = spec.find("@npm:", 1)
+    if alias > 0:
+        return npm_spec_name(spec[alias + 5:])  # "fs@npm:memfs" installs memfs (Qodo on #22)
+    if spec.startswith("node:") and is_node_builtin(spec):
+        return spec  # not an npm name, but the rules must say "built-in, nothing to install" (#21), not drop it
     if spec.startswith("@"):
         parts = spec[1:].split("@", 1)
         name = "@" + parts[0]

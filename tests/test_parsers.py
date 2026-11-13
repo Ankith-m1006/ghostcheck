@@ -84,6 +84,10 @@ def test_pip_commands(cmd, expected):
     ("pnpm add @aws-sdk/client-s3 --save", ["@aws-sdk/client-s3"]),
     ("npm install ./local-folder user/repo", []),
     ("npm install --registry https://r.example.org pkg-a", ["pkg-a"]),
+    # #21: a node: built-in must reach the rules (which say "nothing to install"), not vanish silently
+    ("npm install node:fs lodash", ["node:fs", "lodash"]),
+    # an alias installs the package after npm: (Qodo on #22), so that is the one to check
+    ("npm install fs@npm:memfs util@npm:util@0.12.5", ["memfs", "util"]),
 ])
 def test_npm_commands(cmd, expected):
     assert names(parse_npm_command(cmd)) == expected

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from .parsers import Dependency, PYPI, normalize_pypi
 from .registry import PackageInfo, Registry
+from .stdlib import is_node_builtin_install, is_python_stdlib_install
 from .typosquat import llm_ghosts, nearest_top_package, top_packages
 
 HIGH, MEDIUM, INFO = "HIGH", "MEDIUM", "INFO"
@@ -41,6 +42,19 @@ def check_dependency(dep: Dependency, registry: Registry | None, now: datetime |
     now = now or datetime.now(timezone.utc)
     findings: list[Finding] = []
     f = lambda sev, rule, msg: findings.append(Finding(sev, rule, dep.name, dep.ecosystem, msg, dep.source))
+
+    # AGENTS.md rule 5: installing a built-in is a mistake, not a ghost. Say so plainly, and do not ask the registry:
+    # a 404 there is not "anyone could register it" news, and a hit (asyncio, typing) is an old backport, not the module.
+    if dep.ecosystem == PYPI and is_python_stdlib_install(dep.name):
+        f(MEDIUM, "builtin-install",
+          f"'{dep.name}' is part of the Python standard library; there is nothing to install "
+          f"(a PyPI package with this name, if any, is not the standard module)")
+        return findings, None
+    if dep.ecosystem != PYPI and is_node_builtin_install(dep.name):
+        f(MEDIUM, "builtin-install",
+          f"'{dep.name}' is a Node.js built-in module; there is nothing to install "
+          f"(an npm package with this name is not the built-in)")
+        return findings, None
 
     key = f"{dep.ecosystem}:{normalize_pypi(dep.name) if dep.ecosystem == PYPI else dep.name}"
     ghost = llm_ghosts().get(key)

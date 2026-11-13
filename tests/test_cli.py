@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import ghostcheck.registry as registry_mod
-from ghostcheck import cli
+from ghostcheck import cli, parsers
 from ghostcheck.rules import UNVERIFIED, exit_code
 
 
@@ -349,3 +349,71 @@ def test_source_docstring_lists_every_exit_code():
     doc = ast.get_docstring(ast.parse(inspect.getsource(cli)))
     for code, meaning in cli.EXIT_CODES.items():
         assert f"{code} = {meaning}" in doc, f"exit code {code} missing from the source docstring"
+
+
+# ------------------------------------------------------------------ #21 install commands naming a built-in
+
+@pytest.mark.parametrize(
+    "flag, command, name",
+    [
+        ("--pip", "pip install json", "json"),
+        ("--pip", "pip install asyncio", "asyncio"),
+        ("--npm", "npm install fs", "fs"),
+        ("--npm", "npm install node:fs", "node:fs"),
+    ],
+)
+def test_installing_a_builtin_is_one_builtin_install_finding(fake_network, tmp_path, capsys, flag, command, name):
+    run([flag, command, "--json"], tmp_path)
+    data = json.loads(capsys.readouterr().out)
+    rules_found = [(f["severity"], f["rule"]) for f in data["findings"] if f["package"] == name]
+    assert rules_found == [("MEDIUM", "builtin-install")]
+    # the answer is known offline: no registry request for a built-in name
+    bare = name.removeprefix("node:")
+    asked = [u for _, u in fake_network.calls if f"/pypi/{bare}/" in u or u.endswith((f"npmjs.org/{bare}", f"/last-week/{bare}"))]
+    assert asked == []
+
+
+def test_builtin_install_message_says_there_is_nothing_to_install(fake_network, tmp_path, capsys):
+    run(["--pip", "pip install json", "--json"], tmp_path)
+    msg = json.loads(capsys.readouterr().out)["findings"][0]["message"]
+    assert "standard library" in msg and "nothing to install" in msg
+
+
+def test_builtin_imports_in_code_still_produce_nothing():
+    # rule 5 for code: importing a built-in is never a dependency (guard; unchanged by #21)
+    assert parsers.python_imports("import json\nimport asyncio\nfrom os import path\n") == []
+    assert parsers.js_imports("const fs = require('fs');\nimport path from 'node:path';\n") == []
+
+
+def test_builtin_in_a_dependency_file_is_reported_never_dropped(fake_network, tmp_path, capsys):
+    # AGENTS.md rule 5 (refined in #21): a built-in named as a dependency is never silent and never a ghost
+    req = tmp_path / "requirements.txt"
+    req.write_text("requests==2.32.3\nasyncio\n")
+    pkg = tmp_path / "package.json"
+    pkg.write_text(json.dumps({"dependencies": {"fs": "0.0.1-security"}}))
+    run([str(req), str(pkg), "--json"], tmp_path)
+    found = {(f["package"], f["rule"]) for f in json.loads(capsys.readouterr().out)["findings"]}
+    assert ("asyncio", "builtin-install") in found and ("fs", "builtin-install") in found
+    assert not {r for p, r in found if p in ("asyncio", "fs")} - {"builtin-install"}
+
+
+@pytest.mark.parametrize("name", ["buffer", "events", "util", "process"])
+def test_npm_polyfill_with_a_builtin_name_is_checked_on_the_registry(fake_network, tmp_path, capsys, name):
+    # Qodo on #22: these are real npm packages (browser polyfills), installed on purpose; check them like any package
+    fake_network.npm(name, created_days_ago=4000, weekly=5_000_000, versions=40)
+    assert run(["--npm", f"npm install {name}", "--json"], tmp_path) == 0
+    rules_found = {f["rule"] for f in json.loads(capsys.readouterr().out)["findings"]}
+    assert "builtin-install" not in rules_found
+    assert any(u.endswith(f"npmjs.org/{name}") or u.endswith(f"/last-week/{name}") for _, u in fake_network.calls)
+
+
+def test_builtin_check_uses_pypi_identity(fake_network, tmp_path, capsys):
+    # local Qodo review r1 + AGENTS.md rule 7: pip names are case-insensitive, so JSON is json
+    run(["--pip", "pip install JSON", "--json"], tmp_path)
+    assert [(f["severity"], f["rule"]) for f in json.loads(capsys.readouterr().out)["findings"]] == [("MEDIUM", "builtin-install")]
+
+
+def test_unknown_node_prefixed_name_is_not_called_a_builtin(fake_network, tmp_path, capsys):
+    # local Qodo review r1: only real built-ins get "nothing to install"
+    run(["--npm", "npm install node:not-a-real-module", "--json"], tmp_path)
+    assert "builtin-install" not in {f["rule"] for f in json.loads(capsys.readouterr().out)["findings"]}
