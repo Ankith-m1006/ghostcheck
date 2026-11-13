@@ -397,7 +397,7 @@ def test_builtin_in_a_dependency_file_is_reported_never_dropped(fake_network, tm
     assert not {r for p, r in found if p in ("asyncio", "fs")} - {"builtin-install"}
 
 
-@pytest.mark.parametrize("name", ["buffer", "events", "util", "process"])
+@pytest.mark.parametrize("name", ["buffer", "events", "util", "process", "stream"])
 def test_npm_polyfill_with_a_builtin_name_is_checked_on_the_registry(fake_network, tmp_path, capsys, name):
     # Qodo on #22: these are real npm packages (browser polyfills), installed on purpose; check them like any package
     fake_network.npm(name, created_days_ago=4000, weekly=5_000_000, versions=40)

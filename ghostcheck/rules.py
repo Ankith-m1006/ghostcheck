@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime, timezone
 
 from .parsers import Dependency, PYPI, normalize_pypi
 from .registry import PackageInfo, Registry
-from .stdlib import is_node_builtin_install, is_python_stdlib_install
+from .stdlib import is_node_builtin_install, python_stdlib
 from .typosquat import llm_ghosts, nearest_top_package, top_packages
 
 HIGH, MEDIUM, INFO = "HIGH", "MEDIUM", "INFO"
@@ -29,6 +30,12 @@ class Finding:
     source: str = ""
 
 
+@lru_cache(maxsize=1)
+def _stdlib_identities() -> frozenset[str]:
+    """Standard-library names by PyPI identity (AGENTS.md rule 7), so `pip install JSON` is json."""
+    return frozenset(normalize_pypi(n) for n in python_stdlib())
+
+
 def _established(info: PackageInfo | None, now: datetime) -> bool:
     if not info or not info.exists:
         return False
@@ -45,7 +52,7 @@ def check_dependency(dep: Dependency, registry: Registry | None, now: datetime |
 
     # AGENTS.md rule 5: installing a built-in is a mistake, not a ghost. Say so plainly, and do not ask the registry:
     # a 404 there is not "anyone could register it" news, and a hit (asyncio, typing) is an old backport, not the module.
-    if dep.ecosystem == PYPI and is_python_stdlib_install(dep.name):
+    if dep.ecosystem == PYPI and normalize_pypi(dep.name) in _stdlib_identities():
         f(MEDIUM, "builtin-install",
           f"'{dep.name}' is part of the Python standard library; there is nothing to install "
           f"(a PyPI package with this name, if any, is not the standard module)")
