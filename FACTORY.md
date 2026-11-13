@@ -20,7 +20,7 @@ How a ticket becomes a merged change in this repo without a person writing code.
 gh pr list --state open --limit 200 --json number,headRefName,body
 ```
 
-For each, read `Factory rounds: N` from the PR body (the counter; see step 7). If Qodo's latest review has open findings: when `N < 2`, do one fix round (step 7) and stop this run; when `N >= 2`, go to step 8. If the review is clean, the PR waits for merge (step 9).
+For each, read `Factory rounds: N` from the PR body (the counter; see step 7). If Qodo's latest review has open findings, **or a required check (the `tests` CI workflow, GitGuardian) failed on the head commit**: when `N < 2`, do one fix round (step 7) and stop this run; when `N >= 2`, go to step 8. If the review is clean and the checks pass, the PR waits for merge (step 9).
 
 **2. Pick a new ticket** only when no factory PR needs work:
 
@@ -43,7 +43,7 @@ Skip any issue that already has an open `ticket-<n>-*` PR (from step 1's list). 
 
 **8. Stop for help:** remove `ready-for-agent` and `agent-working`, add `needs-human`, and comment on the issue what was tried and what blocks it. No guessing.
 
-**9. Merge** only when Qodo's latest review passes the quality gate (no open High/Medium on the head commit; Lows listed for the owner), the tests are green, and the merge is done by the repo owner or by someone the owner has named for that PR (recorded in the PR conversation). Recommended setting: branch protection on `main` requiring a passing check and an approving review, so this does not rest on prose alone.
+**9. Merge** only when Qodo's latest review passes the quality gate (no open High/Medium on the head commit; Lows listed for the owner), **every required check passed on that same head commit** (`gh pr checks <n>`: the `tests` workflow on each Python version, and GitGuardian; a local `pytest` run does not count), and the merge is done by the repo owner or by someone the owner has named for that PR (recorded in the PR conversation). Branch protection on `main` should require the `tests` checks to pass, so a red CI run cannot be merged even by mistake (a repository setting the owner turns on; until then this step is enforced by the agent reading `gh pr checks`).
 
 ## What the agent may not do in a ticket PR
 

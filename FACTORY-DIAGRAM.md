@@ -43,7 +43,7 @@ flowchart TD
 | 2 Tests | A new test that failed on `main` now passes, and the whole suite is green offline | `pytest` output, red run before the fix | Back to the change | Agent |
 | 3 Local review | Qodo Reviewer on uncommitted code: every valid High/Medium fixed with a test; Lows listed | Review result + the new tests | Fix, or dispute with evidence | Agent; disputes go to the owner |
 | 4 PR review | Qodo's latest review names the head commit; nothing at or above Medium open | The review comment with the head SHA | Fix round (max 2), then `needs-human` | Agent fixes; owner dismisses |
-| 5 Required checks | CI runs `pytest` on the PR; GitGuardian passes | GitHub check runs | Fix round | Automatic |
+| 5 Required checks | CI runs `pytest` on the PR (Python 3.10 and 3.12); GitGuardian passes; all on the head commit | `gh pr checks <n>` | Fix round (FACTORY.md steps 1, 7) | Automatic; merge blocked until green (FACTORY.md step 9) |
 | 6 Merge | Gates 4 and 5 pass on the same head commit; the owner accepts the listed Lows | PR page | Back to a fix round | Owner (or the named agent) |
 
 ## Checked against a real ticket: #21
