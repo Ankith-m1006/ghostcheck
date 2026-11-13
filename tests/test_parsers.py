@@ -84,6 +84,7 @@ def test_pip_commands(cmd, expected):
     ("pnpm add @aws-sdk/client-s3 --save", ["@aws-sdk/client-s3"]),
     ("npm install ./local-folder user/repo", []),
     ("npm install --registry https://r.example.org pkg-a", ["pkg-a"]),
+    ("npm install fs lodash", ["lodash"]),  # rule 5: built-ins are not dependencies
 ])
 def test_npm_commands(cmd, expected):
     assert names(parse_npm_command(cmd)) == expected
@@ -231,3 +232,8 @@ def test_python_runner_review_cases(cmd, want):
 def test_bare_runner_line_in_answer_is_checked():
     # 6: an unfenced command line in an agent answer.
     assert extract_from_answer("Start it:\nnpx -y ghost-mcp\n", "javascript").npm_installs == ["ghost-mcp"]
+
+
+def test_pip_command_skips_standard_library_names():
+    # rule 5: never flag the standard library
+    assert names(parse_pip_command("pip install json asyncio requests")) == ["requests"]

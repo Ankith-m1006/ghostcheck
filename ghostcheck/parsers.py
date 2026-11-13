@@ -254,7 +254,8 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
                 if tok.startswith("-"):
                     continue
                 name = requirement_name(tok)
-                if name and not re.fullmatch(r"[0-9.]+", name):
+                # rule 5: never flag the standard library, so built-in names are not dependencies
+                if name and not re.fullmatch(r"[0-9.]+", name) and not is_python_stdlib(name):
                     deps.append(Dependency(name, PYPI, source))
         for m in _PY_RUNNER.finditer(line):
             flags = _PIPX_RUN_FLAGS if m.group(1).lower().startswith("pipx") else _UVX_FLAGS
@@ -307,6 +308,8 @@ def npm_spec_name(spec: str) -> str | None:
         name = spec.split("@", 1)[0]
     if "/" in name and not name.startswith("@"):
         return None  # "user/repo" GitHub shorthand
+    if is_node_builtin(name):
+        return None  # rule 5: never flag Node built-ins
     return name if _NPM_NAME.match(name) else None
 
 
