@@ -138,6 +138,9 @@ _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editab
                     "--platform", "--python-version", "--implementation", "--abi", "--trusted-host",
                     "--cache-dir", "--src", "-c", "--channel"}
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
+# pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
+_PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
+_PNPM_START = re.compile(r"[\s;&|`(]*(?:sudo\s+)?pnpm\s", re.I)
 
 
 def _split_args(arg_text: str) -> list[str]:
@@ -270,12 +273,14 @@ def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency
     for line in _segments(text):
         for m in _NPM_CMD.finditer(line):
             tokens = _split_args(m.group(1))
+            # the package manager is the command word itself, never a package argument that happens to be "pnpm"
+            value_flags = _PNPM_VALUE_FLAGS if _PNPM_START.match(m.group(0)) else _NPM_VALUE_FLAGS
             skip = False
             for tok in tokens:
                 if skip:
                     skip = False
                     continue
-                if tok in _NPM_VALUE_FLAGS:
+                if tok in value_flags:
                     skip = True
                     continue
                 if tok.startswith("-"):
