@@ -1,0 +1,6 @@
+# Qodo review setup for ghostcheck (Day 11). REVIEW.md holds the product rules.
+[review_agent]
+enable_review_md = true
+# Parser changes are small diffs with wide effects; the default router picked "lite" and missed a sibling-parser bug.
+override_effort = "standard"
+issues_user_guidelines = "When a diff changes how flags are parsed for one package manager, also read the matching flag tables for the other managers in ghostcheck/parsers.py and report the same gap there."
