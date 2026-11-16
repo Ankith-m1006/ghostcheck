@@ -247,6 +247,9 @@ def test_bare_runner_line_in_answer_is_checked():
     ("pnpm add -F web expres", ["expres"]),
     ("pnpm add --filter web expres", ["expres"]),
     ("pnpm add -w expres && npm install -w web lodahs", ["expres", "lodahs"]),
+    ("npm install -w web pnpm", ["pnpm"]),
+    ("npm install -w web pnpm lodash", ["pnpm", "lodash"]),
+    ("sudo pnpm add -w expres", ["expres"]),
 ])
 def test_workspace_flags_per_package_manager(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
