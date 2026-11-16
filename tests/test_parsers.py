@@ -235,3 +235,18 @@ def test_python_runner_review_cases(cmd, want):
 def test_bare_runner_line_in_answer_is_checked():
     # 6: an unfenced command line in an agent answer.
     assert extract_from_answer("Start it:\nnpx -y ghost-mcp\n", "javascript").npm_installs == ["ghost-mcp"]
+
+
+# #25: pnpm's -w is --workspace-root (no value); npm's -w is --workspace <name>
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm add -w expres", ["expres"]),
+    ("pnpm add --workspace-root expres", ["expres"]),
+    ("pnpm add expres -w", ["expres"]),
+    ("npm install -w web expres", ["expres"]),
+    ("npm install --workspace web expres", ["expres"]),
+    ("pnpm add -F web expres", ["expres"]),
+    ("pnpm add --filter web expres", ["expres"]),
+    ("pnpm add -w expres && npm install -w web lodahs", ["expres", "lodahs"]),
+])
+def test_workspace_flags_per_package_manager(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected

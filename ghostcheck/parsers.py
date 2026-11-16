@@ -138,6 +138,8 @@ _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editab
                     "--platform", "--python-version", "--implementation", "--abi", "--trusted-host",
                     "--cache-dir", "--src", "-c", "--channel"}
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
+# pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
+_PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
 
 
 def _split_args(arg_text: str) -> list[str]:
@@ -270,12 +272,13 @@ def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency
     for line in _segments(text):
         for m in _NPM_CMD.finditer(line):
             tokens = _split_args(m.group(1))
+            value_flags = _PNPM_VALUE_FLAGS if re.search(r"\bpnpm\s", m.group(0), re.I) else _NPM_VALUE_FLAGS
             skip = False
             for tok in tokens:
                 if skip:
                     skip = False
                     continue
-                if tok in _NPM_VALUE_FLAGS:
+                if tok in value_flags:
                     skip = True
                     continue
                 if tok.startswith("-"):
