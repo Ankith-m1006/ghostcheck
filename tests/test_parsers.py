@@ -391,3 +391,27 @@ def test_many_quoted_values_and_manager_words_are_fast():
 
 def test_each_inline_command_in_a_line_is_checked():
     assert [d.name for d in parse_npm_command("Run `npm i expres` then `yarn add lodahs`")] == ["expres", "lodahs"]
+
+
+# Ticket #26: values of pip options are not packages; packages after them are still checked.
+_PIP_VALUE_OPTIONS_26 = [
+    "--upgrade-strategy eager", "--progress-bar off", "--log pip.log", "--proxy http://proxy:3128",
+    "--retries 3", "--timeout 9", "--exists-action w", "--no-binary :all:", "--only-binary :all:",
+    "--config-settings key=val", "-C key=val", "--report report.json", "--cert ca.pem",
+    "--client-cert client.pem", "--use-feature truststore", "--python 3.12",
+    # found by the Qodo review of the change (same class of bug)
+    "--keyring-provider subprocess", "--root-user-action ignore", "--install-option warn",
+    "--global-option disabled",
+]
+
+
+@pytest.mark.parametrize("opt", _PIP_VALUE_OPTIONS_26)
+def test_pip_option_values_are_not_packages(opt):
+    names = [d.name for d in parse_pip_command(f"pip install {opt} reqests")]
+    assert names == ["reqests"], (opt, names)
+
+
+@pytest.mark.parametrize("cmd", ["conda install -C reqests", "mamba install -C reqests"])
+def test_conda_cache_switch_does_not_hide_the_package(cmd):
+    # conda/mamba -C (--use-index-cache) takes no value, unlike pip's -C/--config-settings
+    assert [d.name for d in parse_pip_command(cmd)] == ["reqests"]

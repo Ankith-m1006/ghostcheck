@@ -132,7 +132,12 @@ _PROSE_WORDS = {"to", "the", "a", "an", "and", "or", "for", "it", "this", "that"
 _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-i", "--index-url",
                     "--extra-index-url", "-f", "--find-links", "--target", "-t", "--prefix", "--root",
                     "--platform", "--python-version", "--implementation", "--abi", "--trusted-host",
-                    "--cache-dir", "--src", "-c", "--channel"}
+                    "--cache-dir", "--src", "-c", "--channel",
+                    # take a value that is never a package (#26)
+                    "--upgrade-strategy", "--progress-bar", "--log", "--proxy", "--retries", "--timeout",
+                    "--exists-action", "--no-binary", "--only-binary", "--config-settings", "-C", "--report",
+                    "--cert", "--client-cert", "--use-feature", "--python", "--keyring-provider",
+                    "--root-user-action", "--install-option", "--global-option"}
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
 # pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
 _PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
@@ -306,6 +311,8 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
         for m in _PIP_CMD.finditer(line):
             tokens = _split_args(m.group(1) or m.group(2))
             value_flags = _PIP_VALUE_FLAGS | (_UV_PIPX_VALUE_FLAGS if m.group(2) else set())
+            if re.search(r"\b(?:conda|mamba)\s+(?:install|add)\b", m.group(0), re.I):
+                value_flags = value_flags - {"-C"}  # conda/mamba -C (--use-index-cache) takes no value
             skip = False
             for tok in tokens:
                 if skip:
