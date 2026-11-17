@@ -324,3 +324,47 @@ def test_long_pnpm_text_without_a_subcommand_is_fast():
 ])
 def test_pnpm_options_before_subcommand_keep_their_meaning(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #34: npm, yarn and bun options before the subcommand must not hide the install (fail-open)
+@pytest.mark.parametrize("cmd,expected", [
+    ("npm --prefix ./app install lodahs", ["lodahs"]),
+    ("npm -w web install lodahs", ["lodahs"]),
+    ("yarn --cwd app add lodahs", ["lodahs"]),
+    ("bun --cwd app add lodahs", ["lodahs"]),
+    ("npm install lodahs", ["lodahs"]),
+    ("npm install -w web lodahs", ["lodahs"]),
+    ("yarn add lodahs", ["lodahs"]),
+    ("yarn global add lodahs", ["lodahs"]),
+    ("npm --prefix ./app run build", []),
+])
+def test_npm_yarn_bun_options_before_subcommand_are_still_checked(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #34: a manager word that is not an install must not hide a later install in the same line
+@pytest.mark.parametrize("cmd,expected", [
+    ("use npm or yarn add lodahs", ["lodahs"]),
+    ("Run `npm --prefix app install lodahs`", ["lodahs"]),
+])
+def test_later_install_after_a_non_install_manager_word(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+def test_long_npm_text_without_a_subcommand_is_fast():
+    import time
+    text = " ".join(["npm -x yarn -y"] * 3000)
+    t = time.perf_counter()
+    assert parse_npm_command(text) == []
+    assert time.perf_counter() - t < 1.0
+
+
+# #34 review: a manager word inside a quoted or escaped option value is not a new command
+@pytest.mark.parametrize("cmd,expected", [
+    ('pnpm -C "./npm project" add lodahs', ["lodahs"]),
+    ('pnpm -C "my npm stuff" add lodahs', ["lodahs"]),
+    ("npm --prefix 'a yarn b' install lodahs", ["lodahs"]),
+    (r"yarn --cwd my\ bun\ app add lodahs", ["lodahs"]),
+])
+def test_manager_word_inside_quotes_is_not_a_command(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected

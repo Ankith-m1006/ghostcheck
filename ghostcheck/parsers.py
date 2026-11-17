@@ -100,10 +100,6 @@ _PIP_CMD = re.compile(
 _UV_PIPX_VALUE_FLAGS = {"--group", "--optional", "--extra", "--index", "--default-index", "--python", "-p",
                         "--package", "--project", "--directory", "--marker", "-m", "--tag", "--branch", "--rev",
                         "--script", "--pip-args", "--suffix", "--spec", "--preinstall", "--index-url"}
-_NPM_CMD = re.compile(
-    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:npm\s+(?:install|i|add)|yarn\s+(?:global\s+)?add|bun\s+(?:add|install|i))\s+(.+)",
-    re.I,
-)
 # Package runners download a package and run it in one step (issue #13). Only the package is a
 # dependency; everything after it is the program's own arguments.
 _NPM_RUNNER = re.compile(r"(?:^|[\s;&|`(])(?:sudo\s+)?(npx|bunx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx)\s+(.+)", re.I)
@@ -140,31 +136,85 @@ _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editab
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
 # pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
 _PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
-# pnpm reads its own options before the subcommand (`pnpm --filter web add x`, `pnpm -C ./app add x`), so
-# its command is tokenized like a shell would and the subcommand found by walking the tokens (#31).
-_PNPM_CMD = re.compile(r"(?:^|[\s;&|`(])(?:sudo\s+)?pnpm\s+(.+)", re.I)
-_PNPM_SUBCOMMANDS = {"add", "install", "i"}
-# pnpm options placed before the subcommand that take a value
-_PNPM_GLOBAL_VALUE_FLAGS = {"-C", "--dir", "-F", "--filter", "--filter-prod", "--reporter", "--loglevel",
-                            "--workspace-concurrency", "--test-pattern", "--changed-files-ignore-pattern"}
+# npm, pnpm, yarn and bun all accept options before the subcommand (`pnpm --filter web add x`,
+# `npm --prefix ./app install x`, `yarn --cwd app add x`), so each command is tokenized like a shell
+# would and the install subcommand is found by walking the tokens (#31, #34).
+# each manager word starts a candidate command; it does not consume the rest of the line
+_PKG_MANAGER_CMD = re.compile(r"(?<![^\s;&|`(])(?:sudo\s+)?(npm|pnpm|yarn|bun)\s+", re.I)
+_INSTALL_SUBCOMMANDS = {"npm": {"install", "i", "add"}, "pnpm": {"add", "install", "i"},
+                        "yarn": {"add"}, "bun": {"add", "install", "i"}}
+# options placed before the subcommand that take a value, per package manager
+_GLOBAL_VALUE_FLAGS = {
+    "npm": {"--prefix", "-w", "--workspace", "--registry", "--cache", "--userconfig", "--loglevel", "--tag"},
+    "pnpm": {"-C", "--dir", "-F", "--filter", "--filter-prod", "--reporter", "--loglevel",
+             "--workspace-concurrency", "--test-pattern", "--changed-files-ignore-pattern"} | _PNPM_VALUE_FLAGS,
+    "yarn": {"--cwd", "--registry", "--modules-folder", "--cache-folder", "--network-timeout"},
+    "bun": {"--cwd", "--registry", "-c", "--config"},
+}
 
 
-def _pnpm_install_args(arg_text: str) -> list[str] | None:
-    """Tokens after pnpm's add/install/i subcommand, or None when the command is not an install."""
-    tokens = _split_args(arg_text)
-    value_flags = _PNPM_GLOBAL_VALUE_FLAGS | _PNPM_VALUE_FLAGS
+def _install_subcommand_index(manager: str, head: str) -> int | None:
+    """Index of the install subcommand among the tokens of `head`, or None when it is not an install."""
+    tokens = _split_args(head)
+    value_flags = _GLOBAL_VALUE_FLAGS[manager]
     i = 0
     while i < len(tokens):
         tok = tokens[i]
         if tok.startswith("-"):
             i += 2 if (tok in value_flags and "=" not in tok) else 1
             continue
-        if tok.lower() not in _PNPM_SUBCOMMANDS:
-            return None
-        args = tokens[i + 1:]
-        # options before the subcommand still apply to it: --workspace means "local workspace only" (#29)
-        return args + ["--workspace"] if "--workspace" in tokens[:i] else args
+        if manager == "yarn" and tok.lower() == "global" and i + 1 < len(tokens):
+            i += 1  # yarn global add <pkg>
+            tok = tokens[i]
+        return i if tok.lower() in _INSTALL_SUBCOMMANDS[manager] else None
     return None
+
+
+def _quoted_spans(line: str) -> list[tuple[int, int]]:
+    """Character ranges inside '...' or "..." (and escaped characters), where a manager word is text."""
+    spans, quote, start, i = [], "", 0, 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and not quote and i + 1 < len(line):
+            spans.append((i, i + 2))
+            i += 2
+            continue
+        if quote:
+            if ch == quote:
+                spans.append((start, i + 1))
+                quote = ""
+        elif ch in "'\"":
+            quote, start = ch, i
+        i += 1
+    if quote:  # an unclosed quote is prose (as in _segments): treat nothing as quoted
+        return [sp for sp in spans if sp[1] - sp[0] == 2]
+    return spans
+
+
+def _install_commands(line: str) -> list[tuple[list[str], bool]]:
+    """(arguments after the install subcommand, is_pnpm) for each install command in one segment.
+
+    Options before the subcommand are read only up to the next manager word, so a long run of
+    non-install manager words stays linear; an install's arguments run to the end of the segment
+    and any manager word inside them is an argument, not a new command (`npm i -w web pnpm`)."""
+    quoted = _quoted_spans(line)
+    starts = [m for m in _PKG_MANAGER_CMD.finditer(line) if not any(a <= m.start() < b for a, b in quoted)]
+    out: list[tuple[list[str], bool]] = []
+    for k, m in enumerate(starts):
+        if out:
+            break  # the previous install's arguments run to the end of the segment
+        manager = m.group(1).lower()
+        stop = starts[k + 1].start() if k + 1 < len(starts) else len(line)
+        idx = _install_subcommand_index(manager, line[m.end():stop])
+        if idx is None:
+            continue
+        tokens = _split_args(line[m.end():])
+        args = tokens[idx + 1:]
+        # pnpm options before the subcommand still apply: --workspace means "local workspace only" (#29)
+        if manager == "pnpm" and "--workspace" in tokens[:idx]:
+            args.append("--workspace")
+        out.append((args, manager == "pnpm"))
+    return out
 
 
 def _split_args(arg_text: str) -> list[str]:
@@ -295,12 +345,7 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
 def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency]:
     deps: list[Dependency] = []
     for line in _segments(text):
-        commands = [(_split_args(m.group(1)), False) for m in _NPM_CMD.finditer(line)]
-        for m in _PNPM_CMD.finditer(line):
-            args = _pnpm_install_args(m.group(1))
-            if args is not None:
-                commands.append((args, True))
-        for tokens, is_pnpm in commands:
+        for tokens, is_pnpm in _install_commands(line):
             value_flags = _PNPM_VALUE_FLAGS if is_pnpm else _NPM_VALUE_FLAGS
             # pnpm add --workspace only links a package from the local workspace and never fetches it
             # from the registry (pnpm fails instead), so its packages are not npm lookups (#29)
