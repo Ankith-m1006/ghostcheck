@@ -313,6 +313,8 @@ def npm_spec_name(spec: str) -> str | None:
     alias = spec.find("@npm:", 1)
     if alias > 0:
         return npm_spec_name(spec[alias + 5:])  # "fs@npm:memfs" installs memfs (Qodo on #22)
+    if spec.find("@workspace:", 1) > 0:
+        return None  # "pkg@workspace:*" links a local workspace package, never fetched from npm (#30)
     if spec.startswith("node:") and is_node_builtin(spec):
         return spec  # not an npm name, but the rules must say "built-in, nothing to install" (#21), not drop it
     if spec.startswith("@"):
