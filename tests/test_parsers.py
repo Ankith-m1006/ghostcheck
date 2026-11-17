@@ -280,3 +280,114 @@ def test_pnpm_workspace_only_packages_are_not_checked_on_npm(cmd, expected):
 ])
 def test_workspace_protocol_packages_are_not_checked_on_npm(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #31: pnpm options before the subcommand must not hide the install (fail-open)
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm --filter web add lodahs", ["lodahs"]),
+    ("pnpm -F web add lodahs", ["lodahs"]),
+    ("pnpm -C ./app add lodahs", ["lodahs"]),
+    ("pnpm --dir=./app add lodahs", ["lodahs"]),
+    ("pnpm -r add lodahs", ["lodahs"]),
+    ("pnpm add lodahs", ["lodahs"]),
+    ("pnpm --filter web add --workspace @acme/shared", []),
+    ("pnpm --filter web run build", []),
+])
+def test_pnpm_options_before_subcommand_are_still_checked(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #31 review r1: shell quoting in option values, a selector named like a subcommand, long input
+@pytest.mark.parametrize("cmd,expected", [
+    ('pnpm --dir "./my app" add lodahs', ["lodahs"]),
+    (r"pnpm -C ./my\ app add lodahs", ["lodahs"]),
+    ("pnpm --filter add install lodahs", ["lodahs"]),
+    ("pnpm --reporter silent add lodahs", ["lodahs"]),
+])
+def test_pnpm_option_values_are_read_as_shell_tokens(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+def test_long_pnpm_text_without_a_subcommand_is_fast():
+    import time
+    text = " ".join(["pnpm -x"] * 5000)
+    t = time.perf_counter()
+    assert parse_npm_command(text) == []
+    assert time.perf_counter() - t < 1.0
+
+
+# #31 PR review: --workspace and value-taking options placed before the subcommand
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm --workspace add @acme/shared", []),
+    ("pnpm --registry https://registry.example add lodahs", ["lodahs"]),
+    ("pnpm --prefix ./app add lodahs", ["lodahs"]),
+])
+def test_pnpm_options_before_subcommand_keep_their_meaning(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #34: npm, yarn and bun options before the subcommand must not hide the install (fail-open)
+@pytest.mark.parametrize("cmd,expected", [
+    ("npm --prefix ./app install lodahs", ["lodahs"]),
+    ("npm -w web install lodahs", ["lodahs"]),
+    ("yarn --cwd app add lodahs", ["lodahs"]),
+    ("bun --cwd app add lodahs", ["lodahs"]),
+    ("npm install lodahs", ["lodahs"]),
+    ("npm install -w web lodahs", ["lodahs"]),
+    ("yarn add lodahs", ["lodahs"]),
+    ("yarn global add lodahs", ["lodahs"]),
+    ("npm --prefix ./app run build", []),
+])
+def test_npm_yarn_bun_options_before_subcommand_are_still_checked(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #34: a manager word that is not an install must not hide a later install in the same line
+@pytest.mark.parametrize("cmd,expected", [
+    ("use npm or yarn add lodahs", ["lodahs"]),
+    ("Run `npm --prefix app install lodahs`", ["lodahs"]),
+])
+def test_later_install_after_a_non_install_manager_word(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+def test_long_npm_text_without_a_subcommand_is_fast():
+    import time
+    text = " ".join(["npm -x yarn -y"] * 3000)
+    t = time.perf_counter()
+    assert parse_npm_command(text) == []
+    assert time.perf_counter() - t < 1.0
+
+
+# #34 review: a manager word inside a quoted or escaped option value is not a new command
+@pytest.mark.parametrize("cmd,expected", [
+    ('pnpm -C "./npm project" add lodahs', ["lodahs"]),
+    ('pnpm -C "my npm stuff" add lodahs', ["lodahs"]),
+    ("npm --prefix 'a yarn b' install lodahs", ["lodahs"]),
+    (r"yarn --cwd my\ bun\ app add lodahs", ["lodahs"]),
+])
+def test_manager_word_inside_quotes_is_not_a_command(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #34 PR review r2: escaped quotes, more value options, a manager word as an option value, many quotes
+@pytest.mark.parametrize("cmd,expected", [
+    ('npm --prefix "a \\"npm x\\"" install lodahs', ["lodahs"]),
+    ("npm --omit dev install lodahs", ["lodahs"]),
+    ("yarn --mutex network add lodahs", ["lodahs"]),
+    ("npm -w yarn install lodahs", ["lodahs"]),
+])
+def test_install_found_through_tricky_option_values(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+def test_many_quoted_values_and_manager_words_are_fast():
+    import time
+    text = " ".join(["'x' npm -x"] * 3000)
+    t = time.perf_counter()
+    assert parse_npm_command(text) == []
+    assert time.perf_counter() - t < 1.0
+
+
+def test_each_inline_command_in_a_line_is_checked():
+    assert [d.name for d in parse_npm_command("Run `npm i expres` then `yarn add lodahs`")] == ["expres", "lodahs"]
