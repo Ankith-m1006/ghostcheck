@@ -368,3 +368,26 @@ def test_long_npm_text_without_a_subcommand_is_fast():
 ])
 def test_manager_word_inside_quotes_is_not_a_command(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #34 PR review r2: escaped quotes, more value options, a manager word as an option value, many quotes
+@pytest.mark.parametrize("cmd,expected", [
+    ('npm --prefix "a \\"npm x\\"" install lodahs', ["lodahs"]),
+    ("npm --omit dev install lodahs", ["lodahs"]),
+    ("yarn --mutex network add lodahs", ["lodahs"]),
+    ("npm -w yarn install lodahs", ["lodahs"]),
+])
+def test_install_found_through_tricky_option_values(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+def test_many_quoted_values_and_manager_words_are_fast():
+    import time
+    text = " ".join(["'x' npm -x"] * 3000)
+    t = time.perf_counter()
+    assert parse_npm_command(text) == []
+    assert time.perf_counter() - t < 1.0
+
+
+def test_each_inline_command_in_a_line_is_checked():
+    assert [d.name for d in parse_npm_command("Run `npm i expres` then `yarn add lodahs`")] == ["expres", "lodahs"]
