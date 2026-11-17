@@ -101,7 +101,7 @@ _UV_PIPX_VALUE_FLAGS = {"--group", "--optional", "--extra", "--index", "--defaul
                         "--package", "--project", "--directory", "--marker", "-m", "--tag", "--branch", "--rev",
                         "--script", "--pip-args", "--suffix", "--spec", "--preinstall", "--index-url"}
 _NPM_CMD = re.compile(
-    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:npm\s+(?:install|i|add)|yarn\s+(?:global\s+)?add|pnpm\s+(?:add|install|i)|bun\s+(?:add|install|i))\s+(.+)",
+    r"(?:^|[\s;&|`(])(?:sudo\s+)?(?:npm\s+(?:install|i|add)|yarn\s+(?:global\s+)?add|bun\s+(?:add|install|i))\s+(.+)",
     re.I,
 )
 # Package runners download a package and run it in one step (issue #13). Only the package is a
@@ -140,7 +140,26 @@ _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editab
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
 # pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
 _PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
-_PNPM_START = re.compile(r"[\s;&|`(]*(?:sudo\s+)?pnpm\s", re.I)
+# pnpm reads its own options before the subcommand (`pnpm --filter web add x`, `pnpm -C ./app add x`), so
+# its command is tokenized like a shell would and the subcommand found by walking the tokens (#31).
+_PNPM_CMD = re.compile(r"(?:^|[\s;&|`(])(?:sudo\s+)?pnpm\s+(.+)", re.I)
+_PNPM_SUBCOMMANDS = {"add", "install", "i"}
+# pnpm options placed before the subcommand that take a value
+_PNPM_GLOBAL_VALUE_FLAGS = {"-C", "--dir", "-F", "--filter", "--filter-prod", "--reporter", "--loglevel",
+                            "--workspace-concurrency", "--test-pattern", "--changed-files-ignore-pattern"}
+
+
+def _pnpm_install_args(arg_text: str) -> list[str] | None:
+    """Tokens after pnpm's add/install/i subcommand, or None when the command is not an install."""
+    tokens = _split_args(arg_text)
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("-"):
+            i += 2 if (tok in _PNPM_GLOBAL_VALUE_FLAGS and "=" not in tok) else 1
+            continue
+        return tokens[i + 1:] if tok.lower() in _PNPM_SUBCOMMANDS else None
+    return None
 
 
 def _split_args(arg_text: str) -> list[str]:
@@ -271,10 +290,12 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
 def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency]:
     deps: list[Dependency] = []
     for line in _segments(text):
-        for m in _NPM_CMD.finditer(line):
-            tokens = _split_args(m.group(1))
-            # the package manager is the command word itself, never a package argument that happens to be "pnpm"
-            is_pnpm = bool(_PNPM_START.match(m.group(0)))
+        commands = [(_split_args(m.group(1)), False) for m in _NPM_CMD.finditer(line)]
+        for m in _PNPM_CMD.finditer(line):
+            args = _pnpm_install_args(m.group(1))
+            if args is not None:
+                commands.append((args, True))
+        for tokens, is_pnpm in commands:
             value_flags = _PNPM_VALUE_FLAGS if is_pnpm else _NPM_VALUE_FLAGS
             # pnpm add --workspace only links a package from the local workspace and never fetches it
             # from the registry (pnpm fails instead), so its packages are not npm lookups (#29)

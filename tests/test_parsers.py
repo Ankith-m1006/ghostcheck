@@ -280,3 +280,37 @@ def test_pnpm_workspace_only_packages_are_not_checked_on_npm(cmd, expected):
 ])
 def test_workspace_protocol_packages_are_not_checked_on_npm(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #31: pnpm options before the subcommand must not hide the install (fail-open)
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm --filter web add lodahs", ["lodahs"]),
+    ("pnpm -F web add lodahs", ["lodahs"]),
+    ("pnpm -C ./app add lodahs", ["lodahs"]),
+    ("pnpm --dir=./app add lodahs", ["lodahs"]),
+    ("pnpm -r add lodahs", ["lodahs"]),
+    ("pnpm add lodahs", ["lodahs"]),
+    ("pnpm --filter web add --workspace @acme/shared", []),
+    ("pnpm --filter web run build", []),
+])
+def test_pnpm_options_before_subcommand_are_still_checked(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #31 review r1: shell quoting in option values, a selector named like a subcommand, long input
+@pytest.mark.parametrize("cmd,expected", [
+    ('pnpm --dir "./my app" add lodahs', ["lodahs"]),
+    (r"pnpm -C ./my\ app add lodahs", ["lodahs"]),
+    ("pnpm --filter add install lodahs", ["lodahs"]),
+    ("pnpm --reporter silent add lodahs", ["lodahs"]),
+])
+def test_pnpm_option_values_are_read_as_shell_tokens(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+def test_long_pnpm_text_without_a_subcommand_is_fast():
+    import time
+    text = " ".join(["pnpm -x"] * 5000)
+    t = time.perf_counter()
+    assert parse_npm_command(text) == []
+    assert time.perf_counter() - t < 1.0
