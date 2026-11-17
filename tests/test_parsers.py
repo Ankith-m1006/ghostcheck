@@ -268,3 +268,15 @@ def test_workspace_flags_per_package_manager(cmd, expected):
 ])
 def test_pnpm_workspace_only_packages_are_not_checked_on_npm(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #30: the workspace: protocol links a local package; it is never fetched from npm
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm add @acme/shared@workspace:*", []),
+    ("yarn add @acme/shared@workspace:^", []),
+    ("pnpm add shared-utils@workspace:~ lodahs", ["lodahs"]),
+    ("pnpm add lodash@^4", ["lodash"]),
+    ("npm install @types/node@20", ["@types/node"]),
+])
+def test_workspace_protocol_packages_are_not_checked_on_npm(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
