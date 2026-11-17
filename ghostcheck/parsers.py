@@ -274,7 +274,12 @@ def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency
         for m in _NPM_CMD.finditer(line):
             tokens = _split_args(m.group(1))
             # the package manager is the command word itself, never a package argument that happens to be "pnpm"
-            value_flags = _PNPM_VALUE_FLAGS if _PNPM_START.match(m.group(0)) else _NPM_VALUE_FLAGS
+            is_pnpm = bool(_PNPM_START.match(m.group(0)))
+            value_flags = _PNPM_VALUE_FLAGS if is_pnpm else _NPM_VALUE_FLAGS
+            # pnpm add --workspace only links a package from the local workspace and never fetches it
+            # from the registry (pnpm fails instead), so its packages are not npm lookups (#29)
+            if is_pnpm and "--workspace" in tokens:
+                continue
             skip = False
             for tok in tokens:
                 if skip:
