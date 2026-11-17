@@ -399,6 +399,9 @@ _PIP_VALUE_OPTIONS_26 = [
     "--retries 3", "--timeout 9", "--exists-action w", "--no-binary :all:", "--only-binary :all:",
     "--config-settings key=val", "-C key=val", "--report report.json", "--cert ca.pem",
     "--client-cert client.pem", "--use-feature truststore", "--python 3.12",
+    # found by the Qodo review of the change (same class of bug)
+    "--keyring-provider subprocess", "--root-user-action ignore", "--install-option warn",
+    "--global-option disabled",
 ]
 
 

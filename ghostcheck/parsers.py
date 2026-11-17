@@ -136,7 +136,8 @@ _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editab
                     # take a value that is never a package (#26)
                     "--upgrade-strategy", "--progress-bar", "--log", "--proxy", "--retries", "--timeout",
                     "--exists-action", "--no-binary", "--only-binary", "--config-settings", "-C", "--report",
-                    "--cert", "--client-cert", "--use-feature", "--python"}
+                    "--cert", "--client-cert", "--use-feature", "--python", "--keyring-provider",
+                    "--root-user-action", "--install-option", "--global-option"}
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
 # pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
 _PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
