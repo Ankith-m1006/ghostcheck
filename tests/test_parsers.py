@@ -253,3 +253,18 @@ def test_bare_runner_line_in_answer_is_checked():
 ])
 def test_workspace_flags_per_package_manager(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+# #29: pnpm add --workspace only links a local workspace package; it never fetches from npm
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm add --workspace @acme/shared", []),
+    ("pnpm add @acme/shared --workspace", []),
+    ("pnpm add --workspace @acme/shared && pnpm add lodahs", ["lodahs"]),
+    ("pnpm add lodash", ["lodash"]),
+    ("pnpm add -w lodash", ["lodash"]),
+    ("pnpm add --workspace-root lodash", ["lodash"]),
+    ("npm install -w web lodash", ["lodash"]),
+    ("npm install --workspace web lodash", ["lodash"]),
+])
+def test_pnpm_workspace_only_packages_are_not_checked_on_npm(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
