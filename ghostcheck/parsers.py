@@ -152,13 +152,18 @@ _PNPM_GLOBAL_VALUE_FLAGS = {"-C", "--dir", "-F", "--filter", "--filter-prod", "-
 def _pnpm_install_args(arg_text: str) -> list[str] | None:
     """Tokens after pnpm's add/install/i subcommand, or None when the command is not an install."""
     tokens = _split_args(arg_text)
+    value_flags = _PNPM_GLOBAL_VALUE_FLAGS | _PNPM_VALUE_FLAGS
     i = 0
     while i < len(tokens):
         tok = tokens[i]
         if tok.startswith("-"):
-            i += 2 if (tok in _PNPM_GLOBAL_VALUE_FLAGS and "=" not in tok) else 1
+            i += 2 if (tok in value_flags and "=" not in tok) else 1
             continue
-        return tokens[i + 1:] if tok.lower() in _PNPM_SUBCOMMANDS else None
+        if tok.lower() not in _PNPM_SUBCOMMANDS:
+            return None
+        args = tokens[i + 1:]
+        # options before the subcommand still apply to it: --workspace means "local workspace only" (#29)
+        return args + ["--workspace"] if "--workspace" in tokens[:i] else args
     return None
 
 

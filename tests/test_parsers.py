@@ -314,3 +314,13 @@ def test_long_pnpm_text_without_a_subcommand_is_fast():
     t = time.perf_counter()
     assert parse_npm_command(text) == []
     assert time.perf_counter() - t < 1.0
+
+
+# #31 PR review: --workspace and value-taking options placed before the subcommand
+@pytest.mark.parametrize("cmd,expected", [
+    ("pnpm --workspace add @acme/shared", []),
+    ("pnpm --registry https://registry.example add lodahs", ["lodahs"]),
+    ("pnpm --prefix ./app add lodahs", ["lodahs"]),
+])
+def test_pnpm_options_before_subcommand_keep_their_meaning(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
