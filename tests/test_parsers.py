@@ -409,3 +409,9 @@ _PIP_VALUE_OPTIONS_26 = [
 def test_pip_option_values_are_not_packages(opt):
     names = [d.name for d in parse_pip_command(f"pip install {opt} reqests")]
     assert names == ["reqests"], (opt, names)
+
+
+@pytest.mark.parametrize("cmd", ["conda install -C reqests", "mamba install -C reqests"])
+def test_conda_cache_switch_does_not_hide_the_package(cmd):
+    # conda/mamba -C (--use-index-cache) takes no value, unlike pip's -C/--config-settings
+    assert [d.name for d in parse_pip_command(cmd)] == ["reqests"]

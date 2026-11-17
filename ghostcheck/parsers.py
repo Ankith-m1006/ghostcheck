@@ -311,6 +311,8 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
         for m in _PIP_CMD.finditer(line):
             tokens = _split_args(m.group(1) or m.group(2))
             value_flags = _PIP_VALUE_FLAGS | (_UV_PIPX_VALUE_FLAGS if m.group(2) else set())
+            if re.search(r"\b(?:conda|mamba)\s+(?:install|add)\b", m.group(0), re.I):
+                value_flags = value_flags - {"-C"}  # conda/mamba -C (--use-index-cache) takes no value
             skip = False
             for tok in tokens:
                 if skip:
