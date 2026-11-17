@@ -391,3 +391,18 @@ def test_many_quoted_values_and_manager_words_are_fast():
 
 def test_each_inline_command_in_a_line_is_checked():
     assert [d.name for d in parse_npm_command("Run `npm i expres` then `yarn add lodahs`")] == ["expres", "lodahs"]
+
+
+# Ticket #26: values of pip options are not packages; packages after them are still checked.
+_PIP_VALUE_OPTIONS_26 = [
+    "--upgrade-strategy eager", "--progress-bar off", "--log pip.log", "--proxy http://proxy:3128",
+    "--retries 3", "--timeout 9", "--exists-action w", "--no-binary :all:", "--only-binary :all:",
+    "--config-settings key=val", "-C key=val", "--report report.json", "--cert ca.pem",
+    "--client-cert client.pem", "--use-feature truststore", "--python 3.12",
+]
+
+
+@pytest.mark.parametrize("opt", _PIP_VALUE_OPTIONS_26)
+def test_pip_option_values_are_not_packages(opt):
+    names = [d.name for d in parse_pip_command(f"pip install {opt} reqests")]
+    assert names == ["reqests"], (opt, names)

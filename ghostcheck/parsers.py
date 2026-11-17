@@ -132,7 +132,11 @@ _PROSE_WORDS = {"to", "the", "a", "an", "and", "or", "for", "it", "this", "that"
 _PIP_VALUE_FLAGS = {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-i", "--index-url",
                     "--extra-index-url", "-f", "--find-links", "--target", "-t", "--prefix", "--root",
                     "--platform", "--python-version", "--implementation", "--abi", "--trusted-host",
-                    "--cache-dir", "--src", "-c", "--channel"}
+                    "--cache-dir", "--src", "-c", "--channel",
+                    # take a value that is never a package (#26)
+                    "--upgrade-strategy", "--progress-bar", "--log", "--proxy", "--retries", "--timeout",
+                    "--exists-action", "--no-binary", "--only-binary", "--config-settings", "-C", "--report",
+                    "--cert", "--client-cert", "--use-feature", "--python"}
 _NPM_VALUE_FLAGS = {"--registry", "--prefix", "--tag", "-w", "--workspace", "--filter"}
 # pnpm: -w / --workspace are booleans (--workspace-root, "only add from the workspace"); -F is --filter <selector>
 _PNPM_VALUE_FLAGS = (_NPM_VALUE_FLAGS - {"-w", "--workspace"}) | {"-F"}
