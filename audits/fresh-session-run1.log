@@ -1,0 +1,31 @@
+The pnpm audit found 8 failing probes. As you asked, I stopped after writing the evidence; no code or tests were changed.
+
+**Report**
+- **Options with a value:** 12, taken from `pnpm add --help` on pnpm 11.28.9 (written to `audits/pnpm-options.txt`).
+- **Probes:** 34 · **Pass:** 26 · **Fail:** 8 (table in `audits/pnpm-option-values.md`).
+
+**Failing options and why** (the reason comes from `ghostcheck/parsers.py:143` and `:154`):
+
+| Option | Failing probe | What ghostcheck reported | Why |
+|---|---|---|---|
+| `--save-catalog-name` | `add --save-catalog-name X left-pad` | `X, left-pad` | Missing from both pnpm tables. |
+| | `pnpm --save-catalog-name X add left-pad` | nothing | |
+| `--store-dir` | after `add` | `X, left-pad` | Missing from both tables. |
+| | before `add` | nothing | |
+| `--virtual-store-dir` | after `add` | `X, left-pad` | Missing from both tables. |
+| | before `add` | nothing | |
+| `--changed-files-ignore-pattern` | after `add` | `X, left-pad` | Only in the table for options before the subcommand (`_GLOBAL_VALUE_FLAGS["pnpm"]`), not in `_INSTALL_VALUE_FLAGS["pnpm"]`. |
+| `--test-pattern` | after `add` | `X, left-pad` | Same as above. |
+
+(X = `sentinelvalue`.) All 4 `--opt=X` probes passed.
+
+**The "nothing" results are the more serious failure.** When an unknown option comes before the subcommand, its value is read as the subcommand. The parser then never sees `add`, and the real package `left-pad` goes unchecked with no warning. That breaks AGENTS.md rule 1 (fail closed). The other failures only add a false extra package.
+
+**Where the skill was unclear**
+1. **Existing evidence files.** `audits/pnpm-options.txt` and `pnpm-option-values.md` were already there, untracked, from an earlier run. The skill doesn't say whether to reuse, overwrite or compare them. I overwrote them with this run's results, which match the old counts (34 / 26 / 8).
+2. **"Expected results" only covers the value being reported as a package.** It doesn't mention the case where the parser drops the real package and reports nothing. The probe catches it, but the skill should call it out as a fail-closed violation.
+3. **No guidance for `=`-only options.** pnpm shows `--save-catalog-name` only as `--save-catalog-name=<name>`. The skill doesn't say whether to also test the space-separated form. `probe.py` tests both anyway, and I left it that way.
+4. **No guidance for options without a placeholder.** `--allow-build` is described as "a list of package names" and `--global-dir` as "a custom directory", but neither shows a placeholder. Following step 1, I left both out with a `#` comment. They may well take values and need the owner to decide.
+5. **Step 4 conflicts with this request.** The skill moves straight to the red test and the fix, with no point to stop and report. I followed your instruction over the skill.
+
+When you're ready to fix this: add the five options to `_INSTALL_VALUE_FLAGS["pnpm"]`. That table is copied into the before-subcommand table, so one edit fixes both positions. Per rule 2, write the red test in `tests/test_parsers.py` first.

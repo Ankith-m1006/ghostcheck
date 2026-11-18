@@ -468,3 +468,40 @@ def test_boolean_flags_never_swallow_the_package(cmd, expected):
 ])
 def test_option_values_before_the_subcommand_and_in_runners(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+@pytest.mark.parametrize("cmd", [
+    # found by the option-value-audit skill on `pnpm add --help` (pnpm 11.28.9), #39
+    "pnpm add --save-catalog-name sentinelvalue left-pad",
+    "pnpm add --store-dir sentinelvalue left-pad",
+    "pnpm add --virtual-store-dir sentinelvalue left-pad",
+    "pnpm add --changed-files-ignore-pattern sentinelvalue left-pad",
+    "pnpm add --test-pattern sentinelvalue left-pad",
+    "pnpm --save-catalog-name sentinelvalue add left-pad",
+    "pnpm --store-dir sentinelvalue add left-pad",
+    "pnpm --virtual-store-dir sentinelvalue add left-pad",
+    # settled from pnpm.io/cli/add after review: --help shows no placeholder for these two
+    "pnpm add --allow-build sentinelvalue left-pad",
+    "pnpm add --global-dir sentinelvalue left-pad",
+])
+def test_pnpm_value_options_found_by_the_audit(cmd):
+    assert [d.name for d in parse_npm_command(cmd)] == ["left-pad"]
+
+
+@pytest.mark.parametrize("cmd", [
+    # an option ghostcheck has never heard of must not hide the install that follows it (fail closed, #39)
+    "pnpm --brand-new-option sentinelvalue add left-pad",
+    "npm --brand-new-option sentinelvalue install left-pad",
+    "yarn --brand-new-option sentinelvalue add left-pad",
+])
+def test_unknown_option_before_the_subcommand_does_not_hide_the_install(cmd):
+    assert [d.name for d in parse_npm_command(cmd)] == ["left-pad"]
+
+
+@pytest.mark.parametrize("cmd", [
+    "pnpm -r add left-pad",
+    "npm -g install left-pad",
+    "pnpm --offline add left-pad",
+])
+def test_booleans_before_the_subcommand_still_work(cmd):
+    assert [d.name for d in parse_npm_command(cmd)] == ["left-pad"]
