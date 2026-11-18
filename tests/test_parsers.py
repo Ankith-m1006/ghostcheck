@@ -415,3 +415,40 @@ def test_pip_option_values_are_not_packages(opt):
 def test_conda_cache_switch_does_not_hide_the_package(cmd):
     # conda/mamba -C (--use-index-cache) takes no value, unlike pip's -C/--config-settings
     assert [d.name for d in parse_pip_command(cmd)] == ["reqests"]
+
+
+@pytest.mark.parametrize("cmd, expected", [
+    ("npm i --loglevel warn react", ["react"]),
+    ("npm install --omit dev express", ["express"]),
+    ("npm install --omit=dev express", ["express"]),
+    ("npm install --include optional sharp", ["sharp"]),
+    ("npm install --install-strategy nested axios", ["axios"]),
+    ("npm i --before 2024-01-01 debug", ["debug"]),
+    ("npm install --cache /tmp/c lodash", ["lodash"]),
+    ("npm install --userconfig ./.npmrc left-pad", ["left-pad"]),
+    ("npm install --otp 123456 left-pad", ["left-pad"]),
+    ("npm install --audit-level high left-pad", ["left-pad"]),
+    ("yarn add --network-timeout 100000 chalk", ["chalk"]),
+    ("yarn add --cwd app chalk", ["chalk"]),
+    ("yarn add --mutex network chalk", ["chalk"]),
+    ("yarn add --modules-folder vendor chalk", ["chalk"]),
+    ("pnpm add --reporter silent zod", ["zod"]),
+    ("pnpm add --dir web zod", ["zod"]),
+    ("pnpm add -C web zod", ["zod"]),
+    ("bun add --cwd app zod", ["zod"]),
+    ("bun add --backend copyfile zod", ["zod"]),
+    ("bun add --cache-dir .cache zod", ["zod"]),
+])
+def test_package_manager_option_values_are_not_packages(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+@pytest.mark.parametrize("cmd, expected", [
+    ("npm install --save-dev typescript", ["typescript"]),
+    ("npm i -D vitest", ["vitest"]),
+    ("pnpm add -w zod", ["zod"]),
+    ("yarn add --frozen-lockfile chalk", ["chalk"]),
+    ("bun add -d zod", ["zod"]),
+])
+def test_boolean_flags_never_swallow_the_package(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
