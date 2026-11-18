@@ -176,14 +176,14 @@ def _walk_to_subcommand(manager: str, tokens: list[str], start: int) -> tuple[in
     return None, i
 
 
-def _install_commands(line: str) -> list[tuple[list[str], bool]]:
-    """(arguments after the install subcommand, is_pnpm) for the install command in one segment.
+def _install_commands(line: str) -> list[tuple[list[str], str]]:
+    """(arguments after the install subcommand, manager) for the install command in one segment.
 
     Inline code is split on backticks; each piece is tokenized once from its first manager word, so a
     manager word inside quotes is part of a value and every token is walked at most once (linear). An
     install's arguments run to the end of the piece, so a manager word inside them is an argument
     (`npm i -w web pnpm`), and a manager word that is not an install does not hide a later one."""
-    out: list[tuple[list[str], bool]] = []
+    out: list[tuple[list[str], str]] = []
     for piece in line.split("`"):
         m = _PKG_MANAGER_CMD.search(piece)
         if not m:
@@ -203,7 +203,7 @@ def _install_commands(line: str) -> list[tuple[list[str], bool]]:
             # pnpm options before the subcommand still apply: --workspace means "local workspace only" (#29)
             if manager == "pnpm" and "--workspace" in tokens[i + 1:sub]:
                 args.append("--workspace")
-            out.append((args, manager == "pnpm"))
+            out.append((args, manager))
             break
     return out
 
@@ -334,15 +334,33 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
                     deps.append(Dependency(name, PYPI, source))
     return _dedupe(deps, normalize_pypi)
 
+# options after the install subcommand that take a value, per package manager: the value is never a
+# package (`npm i --loglevel warn react`, `yarn add --cwd app chalk`) (#37). Booleans such as
+# --save-dev, -D, pnpm -w and --frozen-lockfile are deliberately absent so they never swallow a package.
+_INSTALL_VALUE_FLAGS = {
+    "npm": _NPM_VALUE_FLAGS | {"--loglevel", "--omit", "--include", "--install-strategy", "--before", "--cache",
+                               "--userconfig", "--otp", "--audit-level", "--location", "--cpu", "--os", "--libc"},
+    "pnpm": _PNPM_VALUE_FLAGS | {"-C", "--dir", "--reporter", "--loglevel", "--filter-prod"},
+    "yarn": _NPM_VALUE_FLAGS - {"-w", "--workspace", "--filter"} | {
+        "--cwd", "--network-timeout", "--mutex", "--modules-folder", "--cache-folder", "--network-concurrency",
+        "--global-folder", "--link-folder"},
+    "bun": {"--cwd", "--registry", "-c", "--config", "--backend", "--cache-dir"},
+}
+# the same options may come before the subcommand (`npm --otp 123456 install zod`) or in a runner
+# (`npx --loglevel warn create-react-app`), so both tables share these definitions (Qodo review on #38)
+for _manager, _flags in _INSTALL_VALUE_FLAGS.items():
+    _GLOBAL_VALUE_FLAGS[_manager] |= _flags
+_NPM_RUNNER_FLAGS["value"] |= set().union(*_INSTALL_VALUE_FLAGS.values())
+
 
 def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency]:
     deps: list[Dependency] = []
     for line in _segments(text):
-        for tokens, is_pnpm in _install_commands(line):
-            value_flags = _PNPM_VALUE_FLAGS if is_pnpm else _NPM_VALUE_FLAGS
+        for tokens, manager in _install_commands(line):
+            value_flags = _INSTALL_VALUE_FLAGS[manager]
             # pnpm add --workspace only links a package from the local workspace and never fetches it
             # from the registry (pnpm fails instead), so its packages are not npm lookups (#29)
-            if is_pnpm and "--workspace" in tokens:
+            if manager == "pnpm" and "--workspace" in tokens:
                 continue
             skip = False
             for tok in tokens:
