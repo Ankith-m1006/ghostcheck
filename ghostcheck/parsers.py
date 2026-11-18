@@ -346,6 +346,11 @@ _INSTALL_VALUE_FLAGS = {
         "--global-folder", "--link-folder"},
     "bun": {"--cwd", "--registry", "-c", "--config", "--backend", "--cache-dir"},
 }
+# the same options may come before the subcommand (`npm --otp 123456 install zod`) or in a runner
+# (`npx --loglevel warn create-react-app`), so both tables share these definitions (Qodo review on #38)
+for _manager, _flags in _INSTALL_VALUE_FLAGS.items():
+    _GLOBAL_VALUE_FLAGS[_manager] |= _flags
+_NPM_RUNNER_FLAGS["value"] |= set().union(*_INSTALL_VALUE_FLAGS.values())
 
 
 def parse_npm_command(text: str, source: str = "npm command") -> list[Dependency]:

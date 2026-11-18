@@ -452,3 +452,19 @@ def test_package_manager_option_values_are_not_packages(cmd, expected):
 ])
 def test_boolean_flags_never_swallow_the_package(cmd, expected):
     assert [d.name for d in parse_npm_command(cmd)] == expected
+
+
+@pytest.mark.parametrize("cmd, expected", [
+    # the same value-taking options placed before the install subcommand (Qodo review on #38)
+    ("npm --otp 123456 install zod", ["zod"]),
+    ("npm --audit-level high i zod", ["zod"]),
+    ("bun --cache-dir .cache add zod", ["zod"]),
+    ("bun --backend copyfile add zod", ["zod"]),
+    # and in runner commands (npx / npm exec / pnpm dlx / yarn dlx)
+    ("npx --loglevel warn create-react-app", ["create-react-app"]),
+    ("pnpm dlx --reporter silent create-vite", ["create-vite"]),
+    ("npm exec --loglevel warn -- cowsay", ["cowsay"]),
+    ("yarn dlx --cwd app create-vite", ["create-vite"]),
+])
+def test_option_values_before_the_subcommand_and_in_runners(cmd, expected):
+    assert [d.name for d in parse_npm_command(cmd)] == expected
