@@ -159,6 +159,11 @@ _GLOBAL_VALUE_FLAGS = {
 }
 
 
+# options before the subcommand that never take a value, so the word after them is the subcommand
+_GLOBAL_BOOLEANS = {"-g", "--global", "-r", "--recursive", "-w", "--workspace-root", "--offline", "--prefer-offline",
+                    "-s", "--silent", "-q", "--quiet", "-d", "--verbose", "-y", "--yes", "--ignore-scripts"}
+
+
 def _walk_to_subcommand(manager: str, tokens: list[str], start: int) -> tuple[int | None, int]:
     """Walk the options after a manager word. Returns (index of the install subcommand or None,
     index of the first token the walk did not consume)."""
@@ -167,7 +172,15 @@ def _walk_to_subcommand(manager: str, tokens: list[str], start: int) -> tuple[in
     while i < len(tokens):
         tok = tokens[i]
         if tok.startswith("-"):
-            i += 2 if (tok in value_flags and "=" not in tok) else 1
+            known_value = tok in value_flags and "=" not in tok
+            # An option we don't know that is followed by one word and then the install subcommand
+            # (`pnpm --new-opt x add pkg`) takes that word as its value: otherwise the value would be
+            # read as the subcommand and the install would go unchecked (fail closed, #39).
+            unknown_value = (not known_value and "=" not in tok and tok not in _GLOBAL_BOOLEANS
+                             and i + 2 < len(tokens) and not tokens[i + 1].startswith("-")
+                             and tokens[i + 1].lower() not in _INSTALL_SUBCOMMANDS[manager]
+                             and tokens[i + 2].lower() in _INSTALL_SUBCOMMANDS[manager])
+            i += 2 if (known_value or unknown_value) else 1
             continue
         if manager == "yarn" and tok.lower() == "global" and i + 1 < len(tokens):
             i += 1  # yarn global add <pkg>
@@ -340,7 +353,9 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
 _INSTALL_VALUE_FLAGS = {
     "npm": _NPM_VALUE_FLAGS | {"--loglevel", "--omit", "--include", "--install-strategy", "--before", "--cache",
                                "--userconfig", "--otp", "--audit-level", "--location", "--cpu", "--os", "--libc"},
-    "pnpm": _PNPM_VALUE_FLAGS | {"-C", "--dir", "--reporter", "--loglevel", "--filter-prod"},
+    "pnpm": _PNPM_VALUE_FLAGS | {"-C", "--dir", "--reporter", "--loglevel", "--filter-prod", "--save-catalog-name",
+                                 "--store-dir", "--virtual-store-dir", "--changed-files-ignore-pattern",
+                                 "--test-pattern"},
     "yarn": _NPM_VALUE_FLAGS - {"-w", "--workspace", "--filter"} | {
         "--cwd", "--network-timeout", "--mutex", "--modules-folder", "--cache-folder", "--network-concurrency",
         "--global-folder", "--link-folder"},

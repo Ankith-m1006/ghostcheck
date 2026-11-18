@@ -1,0 +1,22 @@
+# source: pnpm add --help, pnpm 11.28.9 (Windows, 2026-11-18)
+# Kept: options shown with a value placeholder (<dir>, <level>, <url>, <name>, <pattern>).
+# Unclear, left out of the probe list (help text implies a value but shows no placeholder):
+#   --allow-build   "A list of package names that are allowed to run postinstall scripts"
+#   --global-dir    "Specify a custom directory to store global packages"
+# Note: --save-catalog-name is shown only as --save-catalog-name=<name>; probed in both forms.
+# Booleans deliberately not listed: --color, -e/--save-exact, --save-workspace-protocol, --aggregate-output,
+#   --config, -g/--global, -h, --ignore-scripts, --offline, --prefer-offline, -r/--recursive, --save-catalog,
+#   -d/--save-dev, -o/--save-optional, --save-peer, -p/--save-prod, --stream, --use-stderr, --workspace,
+#   -w/--workspace-root, -y/--yes, --fail-if-no-match
+-C
+--dir
+--loglevel
+--registry
+--save-catalog-name
+--store-dir
+--virtual-store-dir
+--changed-files-ignore-pattern
+-F
+--filter
+--filter-prod
+--test-pattern
