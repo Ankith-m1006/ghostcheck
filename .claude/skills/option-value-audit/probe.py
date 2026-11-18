@@ -58,6 +58,10 @@ def main(argv: list[str]) -> int:
     manager, options_file, evidence_file = argv[1], Path(argv[2]), Path(argv[3])
     options = [ln.strip() for ln in options_file.read_text(encoding="utf-8").splitlines()
                if ln.strip() and not ln.strip().startswith("#")]
+    if not options:
+        print(f"{options_file}: no options to probe. Collect the value-taking options first (SKILL.md step 1); "
+              "an empty list must never count as a passing audit.")
+        return 2
     parser = MANAGERS[manager][1]
     real = REAL["npm"] if parser is parse_npm_command else REAL["py"]
     rows, failed = [], 0

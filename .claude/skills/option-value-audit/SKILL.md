@@ -19,7 +19,7 @@ ghostcheck has shipped the same bug twice: the value after an option was read as
    python .claude/skills/option-value-audit/probe.py <manager> audits/<manager>-options.txt audits/<manager>-option-values.md
    ```
    For each option it checks `<cmd> <opt> VALUE pkg`, `<cmd> <opt>=VALUE pkg`, and, for npm, pnpm, yarn and bun, the option placed before the subcommand.
-3. **If every probe passes:** you are done. Keep the evidence file and report the counts.
+3. **If every probe passes:** check the "unclear" list from step 1 first. If it is empty, you are done: keep the evidence file and report the counts. If it is not empty, the audit is **incomplete, not passed**. Settle each unclear option from the tool's official docs (for pnpm, pnpm.io/cli/add), move the ones that take a value into the list, and re-run the probe. Ask the owner only for options you still can't settle.
 4. **If probes fail:** follow AGENTS.md rule 2 (red test first):
    1. Add the failing commands as a parametrized test in `tests/test_parsers.py` and run it. It must fail on the current code.
    2. Add the missing options to the right table in `ghostcheck/parsers.py` (`_PIP_VALUE_FLAGS`, `_UV_PIPX_VALUE_FLAGS` or `_INSTALL_VALUE_FLAGS[...]`). The pre-subcommand and runner tables already share `_INSTALL_VALUE_FLAGS`.

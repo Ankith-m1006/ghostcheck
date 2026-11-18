@@ -355,7 +355,7 @@ _INSTALL_VALUE_FLAGS = {
                                "--userconfig", "--otp", "--audit-level", "--location", "--cpu", "--os", "--libc"},
     "pnpm": _PNPM_VALUE_FLAGS | {"-C", "--dir", "--reporter", "--loglevel", "--filter-prod", "--save-catalog-name",
                                  "--store-dir", "--virtual-store-dir", "--changed-files-ignore-pattern",
-                                 "--test-pattern"},
+                                 "--test-pattern", "--allow-build", "--global-dir"},
     "yarn": _NPM_VALUE_FLAGS - {"-w", "--workspace", "--filter"} | {
         "--cwd", "--network-timeout", "--mutex", "--modules-folder", "--cache-folder", "--network-concurrency",
         "--global-folder", "--link-folder"},

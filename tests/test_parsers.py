@@ -480,6 +480,9 @@ def test_option_values_before_the_subcommand_and_in_runners(cmd, expected):
     "pnpm --save-catalog-name sentinelvalue add left-pad",
     "pnpm --store-dir sentinelvalue add left-pad",
     "pnpm --virtual-store-dir sentinelvalue add left-pad",
+    # settled from pnpm.io/cli/add after review: --help shows no placeholder for these two
+    "pnpm add --allow-build sentinelvalue left-pad",
+    "pnpm add --global-dir sentinelvalue left-pad",
 ])
 def test_pnpm_value_options_found_by_the_audit(cmd):
     assert [d.name for d in parse_npm_command(cmd)] == ["left-pad"]

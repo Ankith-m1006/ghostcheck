@@ -1,6 +1,6 @@
 # Option-value audit: pnpm
 
-34 probes, 34 pass, 0 fail.
+40 probes, 40 pass, 0 fail.
 
 | Command | Expected | Got | Result |
 | --- | --- | --- | --- |
@@ -38,3 +38,9 @@
 | `pnpm add --test-pattern sentinelvalue left-pad` | `left-pad` | `left-pad` | PASS |
 | `pnpm add --test-pattern=sentinelvalue left-pad` | `left-pad` | `left-pad` | PASS |
 | `pnpm --test-pattern sentinelvalue add left-pad` | `left-pad` | `left-pad` | PASS |
+| `pnpm add --allow-build sentinelvalue left-pad` | `left-pad` | `left-pad` | PASS |
+| `pnpm add --allow-build=sentinelvalue left-pad` | `left-pad` | `left-pad` | PASS |
+| `pnpm --allow-build sentinelvalue add left-pad` | `left-pad` | `left-pad` | PASS |
+| `pnpm add --global-dir sentinelvalue left-pad` | `left-pad` | `left-pad` | PASS |
+| `pnpm add --global-dir=sentinelvalue left-pad` | `left-pad` | `left-pad` | PASS |
+| `pnpm --global-dir sentinelvalue add left-pad` | `left-pad` | `left-pad` | PASS |
