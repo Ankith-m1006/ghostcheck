@@ -28,13 +28,21 @@ flowchart TD
     G4 -- "findings, rounds < 2" --> FIX["Fix round: test first,<br/>push, rounds + 1"] --> QR
     G4 -- "still open after 2 rounds" --> S
     G5 -- no --> FIX
-    G4 -- clean --> M{"Gate 6: merge decision<br/>owner, or the agent the owner<br/>named for this repo"}
+    G4 -- clean --> WF{"Qodo workflow (Day 14)<br/>'ghostcheck gate': no findings<br/>at Medium or higher, all categories"}
+    WF --> GU{"Approval guard: does the PR touch<br/>ghostcheck/rules.py or<br/>ghostcheck/mcp_server.py?"}
+    GU -- "yes: verdict logic" --> HR["No label by design:<br/>owner reviews the diff<br/>and approves on GitHub"] --> OM{"Owner-only merge<br/>(the named agent may not merge;<br/>needs Gate 5 green too)"}
+    G5 -- pass --> OM
+    OM -- merge --> MAIN
+    OM -- "changes needed" --> FIX
+    GU -- no --> LB["'Qodo approved' label<br/>(met the workflow criteria only)"] --> M{"Gate 6: merge decision<br/>owner, or the agent the owner<br/>named for this repo"}
     G5 -- pass --> M
     M -- "Low findings not acceptable" --> FIX
     M -- merge --> MAIN["main"]
 ```
 
 ## The gates
+
+The "Qodo approved" label only means the PR met the workflow criteria. It does not replace Gate 5: CI, tests and the acceptance criteria are still checked separately before a merge.
 
 | Gate | What must pass | Evidence | On failure | Who decides |
 |---|---|---|---|---|
@@ -45,6 +53,8 @@ flowchart TD
 | 4 PR review | Qodo's latest review names the head commit; nothing at or above Medium open | The review comment with the head SHA | Fix round (max 2), then `needs-human` | Agent fixes; owner dismisses |
 | 5 Required checks | CI runs `pytest` on the PR (Python 3.10 and 3.12); GitGuardian passes; all on the head commit | `gh pr checks <n>` | Fix round (FACTORY.md steps 1, 7) | Automatic; merge blocked until green (FACTORY.md step 9) |
 | 6 Merge | Gates 4 and 5 pass on the same head commit; the owner accepts the listed Lows | PR page | Back to a fix round | Owner (or the named agent) |
+| 6a Approval workflow (Day 14) | Qodo workflow "ghostcheck gate: label PRs with no Medium+ findings" (repo scope: ghostcheck): no findings at Medium or higher, every category and finding type; action: add the "Qodo approved" label, never auto-approve | Label on the PR, PR Triage activity | Unguarded PR with no label: back to Gate 4 (guarded PRs never get the label, see 6b) | Qodo adds the label; merge stays Gate 6 |
+| 6b Approval guard | Any PR that changes `ghostcheck/rules.py` (findings and the CLI exit code) or `ghostcheck/mcp_server.py` (the MCP verdict) gets no label and goes to a person, even with zero findings | Workspace guard "Ankith-m1006/ghostcheck: only these paths" with both files | Owner reviews and approves on GitHub; Gates 4 and 5 still apply | Owner only: the named agent never merges a guarded PR |
 
 ## Checked against a real ticket: #21
 
