@@ -530,7 +530,7 @@ from ghostcheck.parsers import unread_install_sources_with_kind
 
 @pytest.mark.parametrize("text,expected", [
     ("conda install -c conda-forge rdkit", []),
-    ("mamba install -c conda-forge --file env.txt", [("env.txt", "file")]),
+    ("mamba install -c conda-forge --file env.txt", [("env.txt", "conda-file")]),
     ("pip install -c constraints.txt flask", [("constraints.txt", "file")]),
     ("uv pip install -e ./lib", [("./lib", "editable")]),
     ("pip install --editable=. -r a.txt", [(".", "editable"), ("a.txt", "file")]),

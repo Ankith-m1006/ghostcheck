@@ -350,13 +350,13 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
 _UNREAD_SOURCE_FLAGS = {"--requirement": "file", "--constraint": "file", "--editable": "editable",
                         "-r": "file", "-c": "file", "-e": "editable"}
 # conda/mamba: -c is a channel, not a constraints file; --file names a package list that is not read
-_CONDA_UNREAD_FLAGS = {"--file": "file"}
+_CONDA_UNREAD_FLAGS = {"--file": "conda-file", "-f": "conda-file"}
 
 
 def unread_install_sources_with_kind(text: str) -> list[tuple[str, str]]:
     """(source, kind) for every file or path an install reads that the command parser cannot check.
 
-    kind is "file" (a requirements, constraints or conda package list) or "editable" (a local project path).
+    kind is "file" (a pip requirements or constraints file), "conda-file" (a conda package list) or "editable" (a local project path).
     """
     found: list[tuple[str, str]] = []
     for line in _segments(text):

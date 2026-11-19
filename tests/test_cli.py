@@ -481,3 +481,23 @@ def test_editable_source_gets_honest_advice(fake_network, tmp_path, capsys):
     assert run(["--cmd", "pip install -e ./lib requests"], tmp_path) == 3
     out = capsys.readouterr().out
     assert "editable" in out and "ghostcheck <file>" not in out
+
+
+# Qodo review on #45, round 2
+def test_uv_directory_option_keeps_the_warning(fake_network, tmp_path, capsys, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("requests\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["requirements.txt", "--cmd", "uv --directory sub add -r requirements.txt"], tmp_path) == 3
+    assert "not read" in capsys.readouterr().out
+
+
+def test_conda_short_file_flag_is_unread(fake_network, tmp_path, capsys):
+    assert run(["--cmd", "conda install -f packages.txt"], tmp_path) == 3
+    assert "packages.txt" in capsys.readouterr().out
+
+
+def test_conda_file_is_warned_even_if_passed_as_input(fake_network, tmp_path, capsys, monkeypatch):
+    (tmp_path / "specs.txt").write_text("@EXPLICIT\nhttps://conda.anaconda.org/x.tar.bz2\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["specs.txt", "--cmd", "conda install --file ./specs.txt"], tmp_path) == 3
+    assert "not read" in capsys.readouterr().out

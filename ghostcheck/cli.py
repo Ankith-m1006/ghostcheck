@@ -115,9 +115,10 @@ def load_inputs(args) -> tuple[list[Dependency], list[Finding]]:
     # and no `cd`/`pushd` in the command could make the same name point at a different file (Qodo review on #45).
     reported: set[str] = set()
     for text in (args.pip, args.cmd):
-        changes_dir = bool(re.search(r"(?:^|[\s;&|(])(?:cd|pushd)\s", text or ""))
+        changes_dir = bool(re.search(r"(?:^|[\s;&|(])(?:cd|pushd)\s|--(?:directory|project|cwd|prefix)\b|\s-C\s", text or ""))
         for src, kind in unread_install_sources_with_kind(text or ""):
             key = os.path.normcase(os.path.normpath(src))
+            # only pip-style requirement files are suppressed: a conda package list is never parsed as conda specs
             if key in reported or (not changes_dir and kind == "file" and Path(src).resolve() in seen):
                 continue
             reported.add(key)
