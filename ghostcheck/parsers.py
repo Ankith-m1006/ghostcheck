@@ -347,6 +347,28 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
                     deps.append(Dependency(name, PYPI, source))
     return _dedupe(deps, normalize_pypi)
 
+_UNREAD_SOURCE_FLAGS = ("--requirement", "--constraint", "--editable", "-r", "-c", "-e")
+
+
+def unread_install_sources(text: str) -> list[str]:
+    """Files and paths a pip/uv install reads that the command parser cannot check (`-r req.txt`, `-e ./lib`)."""
+    found: list[str] = []
+    for line in _segments(text):
+        for m in _PIP_CMD.finditer(line):
+            tokens = _split_args(m.group(1) or m.group(2))
+            for i, tok in enumerate(tokens):
+                for flag in _UNREAD_SOURCE_FLAGS:
+                    if tok == flag:
+                        if i + 1 < len(tokens):
+                            found.append(tokens[i + 1])
+                    elif tok.startswith(flag + "=") or (len(flag) == 2 and tok.startswith(flag) and len(tok) > 2):
+                        found.append(tok[len(flag) + (1 if tok.startswith(flag + "=") else 0):])
+                    else:
+                        continue
+                    break
+    return found
+
+
 # options after the install subcommand that take a value, per package manager: the value is never a
 # package (`npm i --loglevel warn react`, `yarn add --cwd app chalk`) (#37). Booleans such as
 # --save-dev, -D, pnpm -w and --frozen-lockfile are deliberately absent so they never swallow a package.

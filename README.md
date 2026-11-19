@@ -35,10 +35,20 @@ Measured in our study of Gemma 4 coding agents ("Ghosts in the Loop", 2026): whe
 does not exist, the agent tries to install it in most episodes, and the install runs before any error is seen.
 The install boundary is the place to check.
 
+## Use it from a coding agent (MCP)
+```bash
+pip install "ghostcheck[mcp]"
+ghostcheck-mcp        # stdio MCP server
+```
+One tool, `check_install(command, offline=false)`, reads every install in a command (same parsing as `--cmd`) and returns
+`verdict` (`block`, `unverified`, `review`, `ok` or `no-install-found`), `exit_code`, `checked` and `findings`.
+`no-install-found` means nothing was checked, not that the command is safe. A requirements file or editable path in
+the command (`-r req.txt`, `-e ./lib`) is not read by the tool, so it is reported as not verified; check it with the CLI. An empty, non-string or over-long
+`command`, or an argument the tool does not define, is rejected as an error.
+
 ## Roadmap
 This repository is built as a "software factory" for the Qodo hackathon: rules in `AGENTS.md`, tickets, agent-written
-PRs reviewed by Qodo. Next: an MCP server so coding agents can ask ghostcheck before installing, and an
-approve / escalate gate for risky packages.
+PRs reviewed by Qodo. Next: an approve / escalate gate for risky packages.
 
 ## License
 MIT

@@ -177,3 +177,12 @@ def test_builtin_install_check_uses_the_shared_pypi_identity(monkeypatch):
     found, _ = check_dependency(Dependency("JSON", PYPI, "cmd"), None)
     assert [x.rule for x in found] == ["builtin-install"]
     assert "JSON" in calls
+
+
+def test_offline_cache_miss_on_a_top_package_is_not_checked(tmp_path):
+    # Qodo review on ghostcheck#42: being on the bundled popular list is not a registry check (AGENTS.md rule 1).
+    from ghostcheck.registry import Registry
+    from ghostcheck.parsers import Dependency
+    from ghostcheck.rules import UNVERIFIED, check_dependency, exit_code
+    findings, _ = check_dependency(Dependency("requests", "pypi", "test"), Registry(cache_path=tmp_path / "c.json", offline=True))
+    assert any(f.rule == UNVERIFIED for f in findings) and exit_code(findings) == 3

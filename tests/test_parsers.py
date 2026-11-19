@@ -505,3 +505,20 @@ def test_unknown_option_before_the_subcommand_does_not_hide_the_install(cmd):
 ])
 def test_booleans_before_the_subcommand_still_work(cmd):
     assert [d.name for d in parse_npm_command(cmd)] == ["left-pad"]
+
+
+# Qodo review on ghostcheck#42: install inputs the command parser cannot read (requirement files, editable paths)
+from ghostcheck.parsers import unread_install_sources
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("pip install -r requirements.txt requests", ["requirements.txt"]),
+    ("pip install --requirement=dev.txt", ["dev.txt"]),
+    ("pip install -rreq.txt", ["req.txt"]),
+    ("pip install -c constraints.txt -e ./lib", ["constraints.txt", "./lib"]),
+    ("uv pip install -r r.txt && npm i react", ["r.txt"]),
+    ("pip install requests", []),
+    ("echo pip is great", []),
+])
+def test_unread_install_sources(text, expected):
+    assert unread_install_sources(text) == expected
