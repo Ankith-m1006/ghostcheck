@@ -235,7 +235,8 @@ class Registry:
             status, _ = self._fetch(f"https://registry.npmjs.org/{enc}", method="HEAD")
             if status == 200:
                 return PackageInfo(name, NPM, True, weekly_downloads=weekly,
-                                   note=f"popular (>= {NPM_POPULAR_WEEKLY}/week); full document not fetched")
+                                   note=f"popular (>= {NPM_POPULAR_WEEKLY}/week); full document not fetched",
+                                   extra={"dates_skipped": True})
 
         status, body = self._fetch(f"https://registry.npmjs.org/{enc}")
         if status == 404:

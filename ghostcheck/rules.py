@@ -83,7 +83,9 @@ def check_dependency(dep: Dependency, registry: Registry | None, now: datetime |
             f(HIGH, "security-placeholder", "npm replaced this package with a security placeholder (it was malicious)")
         age = info.age_days(now)
         known_top = (normalize_pypi(dep.name) if dep.ecosystem == PYPI else dep.name) in top_packages(dep.ecosystem)
-        if age is None and not known_top:
+        # the npm popular fast path skips the dated document on purpose (cached entries carry only the note)
+        dates_skipped = (info.extra or {}).get("dates_skipped") or info.note.startswith("popular (")
+        if age is None and not known_top and not dates_skipped:
             # Issue #44: no release date means the age checks below cannot run; say so instead of passing silently.
             f(MEDIUM, "age-unknown", f"{reg} gave no release date, so it could be brand-new; check it before installing")
         if age is not None and age < NEW_DAYS:
