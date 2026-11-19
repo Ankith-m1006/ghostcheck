@@ -23,7 +23,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
-from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements
+from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements, unread_install_sources
 from .registry import Registry
 from .rules import HIGH, INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
 
@@ -110,6 +110,15 @@ def load_inputs(args) -> tuple[list[Dependency], list[Finding]]:
         deps += parse_npm_command(args.npm)
     if args.cmd:  # any shell command or agent output: every pip/uv/poetry/pipx and npm/yarn/pnpm/bun install in it
         deps += parse_pip_command(args.cmd, source="command") + parse_npm_command(args.cmd, source="command")
+    # Issue #43: a requirements file or editable path inside a command is installed too, but not read here.
+    # Fail closed on each one, unless the same file was also passed as a positional input and checked above.
+    given = {Path(f).resolve() for f in args.files}
+    for text in (args.pip, args.cmd):
+        for src in unread_install_sources(text or ""):
+            if Path(src).resolve() in given:
+                continue
+            problems.append(Finding(INFO, UNVERIFIED, src, PYPI,
+                                    f"install source not read: '{src}'; check it with: ghostcheck <file>", "command"))
     # One check per registry identity across all inputs (AGENTS.md rule 7); a file occurrence beats a command one.
     seen_ids: set[tuple[str, str]] = set()
     unique: list[Dependency] = []
