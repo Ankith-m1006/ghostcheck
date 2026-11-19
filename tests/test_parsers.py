@@ -522,3 +522,18 @@ from ghostcheck.parsers import unread_install_sources
 ])
 def test_unread_install_sources(text, expected):
     assert unread_install_sources(text) == expected
+
+
+# Qodo review on ghostcheck#45: conda -c is a channel, conda --file is unread; each source carries its kind
+from ghostcheck.parsers import unread_install_sources_with_kind
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("conda install -c conda-forge rdkit", []),
+    ("mamba install -c conda-forge --file env.txt", [("env.txt", "conda-file")]),
+    ("pip install -c constraints.txt flask", [("constraints.txt", "file")]),
+    ("uv pip install -e ./lib", [("./lib", "editable")]),
+    ("pip install --editable=. -r a.txt", [(".", "editable"), ("a.txt", "file")]),
+])
+def test_unread_sources_with_kind(text, expected):
+    assert unread_install_sources_with_kind(text) == expected

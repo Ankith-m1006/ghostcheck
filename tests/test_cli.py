@@ -417,3 +417,87 @@ def test_unknown_node_prefixed_name_is_not_called_a_builtin(fake_network, tmp_pa
     # local Qodo review r1: only real built-ins get "nothing to install"
     run(["--npm", "npm install node:not-a-real-module", "--json"], tmp_path)
     assert "builtin-install" not in {f["rule"] for f in json.loads(capsys.readouterr().out)["findings"]}
+
+
+# Issue #43: install sources named inside --cmd/--pip are not read, so they must not pass silently
+@pytest.mark.parametrize("flag,cmd", [
+    ("--cmd", "pip install -r requirements.txt requests"),
+    ("--pip", "pip install requests --requirement=dev.txt"),
+    ("--cmd", "uv pip install -c constraints.txt requests"),
+])
+def test_unread_source_in_command_fails_closed(fake_network, tmp_path, capsys, flag, cmd):
+    assert run([flag, cmd], tmp_path) == 3
+    out = capsys.readouterr().out
+    assert "not-checked" in out and "not read" in out and "ghostcheck <file>" in out
+
+
+def test_unread_source_allowed_with_flag(fake_network, tmp_path):
+    assert run(["--cmd", "pip install -r requirements.txt requests", "--allow-unverified"], tmp_path) == 0
+
+
+def test_unread_source_already_passed_as_file_is_not_warned(fake_network, tmp_path, capsys, monkeypatch):
+    req = tmp_path / "requirements.txt"
+    req.write_text("requests\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["requirements.txt", "--cmd", "pip install -r requirements.txt"], tmp_path) == 0
+    assert "not read" not in capsys.readouterr().out
+
+
+def test_unread_source_in_json(fake_network, tmp_path, capsys):
+    assert run(["--json", "--cmd", "pip install -r reqs/dev.txt requests"], tmp_path) == 3
+    data = json.loads(capsys.readouterr().out)
+    assert data["unverified"] == 1
+    assert any(f["rule"] == "not-checked" and f["package"] == "reqs/dev.txt" for f in data["findings"])
+
+
+# Qodo review on #45
+def test_cd_before_install_keeps_the_warning(fake_network, tmp_path, capsys, monkeypatch):
+    (tmp_path / "req.txt").write_text("requests\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["req.txt", "--cmd", "cd sub && pip install -r req.txt"], tmp_path) == 3
+    assert "not read" in capsys.readouterr().out
+
+
+def test_same_source_warned_once(fake_network, tmp_path, capsys):
+    assert run(["--json", "--pip", "pip install -r a.txt -r a.txt", "--cmd", "pip install -r a.txt"], tmp_path) == 3
+    data = json.loads(capsys.readouterr().out)
+    assert sum(f["rule"] == "not-checked" and f["package"] == "a.txt" for f in data["findings"]) == 1
+
+
+def test_conda_channel_is_not_an_unread_file(fake_network, tmp_path, capsys):
+    run(["--cmd", "conda install -c conda-forge requests"], tmp_path)
+    assert "not read" not in capsys.readouterr().out
+
+
+def test_included_file_already_read_is_not_warned(fake_network, tmp_path, capsys, monkeypatch):
+    (tmp_path / "child.txt").write_text("flask\n")
+    (tmp_path / "top.txt").write_text("requests\n-r child.txt\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["top.txt", "--cmd", "pip install -r child.txt"], tmp_path) == 0
+    assert "not read" not in capsys.readouterr().out
+
+
+def test_editable_source_gets_honest_advice(fake_network, tmp_path, capsys):
+    assert run(["--cmd", "pip install -e ./lib requests"], tmp_path) == 3
+    out = capsys.readouterr().out
+    assert "editable" in out and "ghostcheck <file>" not in out
+
+
+# Qodo review on #45, round 2
+def test_uv_directory_option_keeps_the_warning(fake_network, tmp_path, capsys, monkeypatch):
+    (tmp_path / "requirements.txt").write_text("requests\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["requirements.txt", "--cmd", "uv --directory sub add -r requirements.txt"], tmp_path) == 3
+    assert "not read" in capsys.readouterr().out
+
+
+def test_conda_short_file_flag_is_unread(fake_network, tmp_path, capsys):
+    assert run(["--cmd", "conda install -f packages.txt"], tmp_path) == 3
+    assert "packages.txt" in capsys.readouterr().out
+
+
+def test_conda_file_is_warned_even_if_passed_as_input(fake_network, tmp_path, capsys, monkeypatch):
+    (tmp_path / "specs.txt").write_text("@EXPLICIT\nhttps://conda.anaconda.org/x.tar.bz2\n")
+    monkeypatch.chdir(tmp_path)
+    assert run(["specs.txt", "--cmd", "conda install --file ./specs.txt"], tmp_path) == 3
+    assert "not read" in capsys.readouterr().out
