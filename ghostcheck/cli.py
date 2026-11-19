@@ -23,7 +23,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
-from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements, unread_install_sources
+from .parsers import PYPI, Dependency, normalize_pypi, parse_npm_command, parse_package_json, parse_pip_command, parse_requirements, unread_install_sources_with_kind
 from .registry import Registry
 from .rules import HIGH, INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
 
@@ -111,14 +111,19 @@ def load_inputs(args) -> tuple[list[Dependency], list[Finding]]:
     if args.cmd:  # any shell command or agent output: every pip/uv/poetry/pipx and npm/yarn/pnpm/bun install in it
         deps += parse_pip_command(args.cmd, source="command") + parse_npm_command(args.cmd, source="command")
     # Issue #43: a requirements file or editable path inside a command is installed too, but not read here.
-    # Fail closed on each one, unless the same file was also passed as a positional input and checked above.
-    given = {Path(f).resolve() for f in args.files}
+    # Fail closed on each one, once, unless the file was already read above (as an input or one of its includes)
+    # and no `cd`/`pushd` in the command could make the same name point at a different file (Qodo review on #45).
+    reported: set[str] = set()
     for text in (args.pip, args.cmd):
-        for src in unread_install_sources(text or ""):
-            if Path(src).resolve() in given:
+        changes_dir = bool(re.search(r"(?:^|[\s;&|(])(?:cd|pushd)\s", text or ""))
+        for src, kind in unread_install_sources_with_kind(text or ""):
+            key = os.path.normcase(os.path.normpath(src))
+            if key in reported or (not changes_dir and kind == "file" and Path(src).resolve() in seen):
                 continue
-            problems.append(Finding(INFO, UNVERIFIED, src, PYPI,
-                                    f"install source not read: '{src}'; check it with: ghostcheck <file>", "command"))
+            reported.add(key)
+            msg = (f"editable source not read: '{src}'; ghostcheck cannot check a local project, review its dependencies"
+                   if kind == "editable" else f"install source not read: '{src}'; check it with: ghostcheck <file>")
+            problems.append(Finding(INFO, UNVERIFIED, src, PYPI, msg, "command"))
     # One check per registry identity across all inputs (AGENTS.md rule 7); a file occurrence beats a command one.
     seen_ids: set[tuple[str, str]] = set()
     unique: list[Dependency] = []

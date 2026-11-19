@@ -347,26 +347,39 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
                     deps.append(Dependency(name, PYPI, source))
     return _dedupe(deps, normalize_pypi)
 
-_UNREAD_SOURCE_FLAGS = ("--requirement", "--constraint", "--editable", "-r", "-c", "-e")
+_UNREAD_SOURCE_FLAGS = {"--requirement": "file", "--constraint": "file", "--editable": "editable",
+                        "-r": "file", "-c": "file", "-e": "editable"}
+# conda/mamba: -c is a channel, not a constraints file; --file names a package list that is not read
+_CONDA_UNREAD_FLAGS = {"--file": "file"}
 
 
-def unread_install_sources(text: str) -> list[str]:
-    """Files and paths a pip/uv install reads that the command parser cannot check (`-r req.txt`, `-e ./lib`)."""
-    found: list[str] = []
+def unread_install_sources_with_kind(text: str) -> list[tuple[str, str]]:
+    """(source, kind) for every file or path an install reads that the command parser cannot check.
+
+    kind is "file" (a requirements, constraints or conda package list) or "editable" (a local project path).
+    """
+    found: list[tuple[str, str]] = []
     for line in _segments(text):
         for m in _PIP_CMD.finditer(line):
+            conda = bool(re.search(r"\b(?:conda|mamba)\s+(?:install|add)\b", m.group(0), re.I))
+            flags = _CONDA_UNREAD_FLAGS if conda else _UNREAD_SOURCE_FLAGS
             tokens = _split_args(m.group(1) or m.group(2))
             for i, tok in enumerate(tokens):
-                for flag in _UNREAD_SOURCE_FLAGS:
+                for flag, kind in flags.items():
                     if tok == flag:
                         if i + 1 < len(tokens):
-                            found.append(tokens[i + 1])
+                            found.append((tokens[i + 1], kind))
                     elif tok.startswith(flag + "=") or (len(flag) == 2 and tok.startswith(flag) and len(tok) > 2):
-                        found.append(tok[len(flag) + (1 if tok.startswith(flag + "=") else 0):])
+                        found.append((tok[len(flag) + (1 if tok.startswith(flag + "=") else 0):], kind))
                     else:
                         continue
                     break
     return found
+
+
+def unread_install_sources(text: str) -> list[str]:
+    """Files and paths a pip/uv/conda install reads that the command parser cannot check (`-r req.txt`, `-e ./lib`)."""
+    return [src for src, _ in unread_install_sources_with_kind(text)]
 
 
 # options after the install subcommand that take a value, per package manager: the value is never a
