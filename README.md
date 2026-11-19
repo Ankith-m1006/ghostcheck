@@ -42,7 +42,8 @@ ghostcheck-mcp        # stdio MCP server
 ```
 One tool, `check_install(command, offline=false)`, reads every install in a command (same parsing as `--cmd`) and returns
 `verdict` (`block`, `unverified`, `review`, `ok` or `no-install-found`), `exit_code`, `checked` and `findings`.
-`no-install-found` means nothing was checked, not that the command is safe. An empty, non-string or over-long
+`no-install-found` means nothing was checked, not that the command is safe. A requirements file or editable path in
+the command (`-r req.txt`, `-e ./lib`) is not read by the tool, so it is reported as not verified; check it with the CLI. An empty, non-string or over-long
 `command`, or an argument the tool does not define, is rejected as an error.
 
 ## Roadmap

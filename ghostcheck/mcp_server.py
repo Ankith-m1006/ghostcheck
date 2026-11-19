@@ -12,9 +12,9 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ConfigDict
 
 from . import cli
-from .parsers import PYPI, normalize_pypi, parse_npm_command, parse_pip_command
+from .parsers import PYPI, normalize_pypi, parse_npm_command, parse_pip_command, unread_install_sources
 from .registry import Registry
-from .rules import MEDIUM, check_dependency, exit_code
+from .rules import INFO, MEDIUM, UNVERIFIED, Finding, check_dependency, exit_code
 
 MAX_COMMAND_CHARS = 20_000
 VERDICTS = {0: "ok", 1: "block", 3: "unverified"}
@@ -41,10 +41,12 @@ def check_install(command: str, offline: bool = False) -> dict[str, Any]:
         if key not in seen:
             seen.add(key)
             unique.append(d)
-    if not unique:
+    # A requirements file or editable path is installed too, but this tool does not read files (Qodo on #42).
+    findings = [Finding(INFO, UNVERIFIED, src, "", f"install source not read: '{src}'; check it with the ghostcheck CLI", "command")
+                for src in unread_install_sources(command)]
+    if not unique and not findings:
         return {"verdict": "no-install-found", "exit_code": 0, "checked": 0, "findings": []}
     registry = Registry(cache_path=cli.default_cache_path(), offline=offline)
-    findings = []
     for dep in unique:
         findings += check_dependency(dep, registry)[0]
     try:

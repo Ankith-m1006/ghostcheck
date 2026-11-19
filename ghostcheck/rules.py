@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from .parsers import Dependency, PYPI, normalize_pypi
 from .registry import PackageInfo, Registry
 from .stdlib import is_node_builtin_install, python_stdlib
-from .typosquat import llm_ghosts, nearest_top_package, top_packages
+from .typosquat import llm_ghosts, nearest_top_package
 
 HIGH, MEDIUM, INFO = "HIGH", "MEDIUM", "INFO"
 
@@ -73,8 +73,8 @@ def check_dependency(dep: Dependency, registry: Registry | None, now: datetime |
     info = registry.lookup(dep.name, dep.ecosystem) if registry else None
     reg = "PyPI" if dep.ecosystem == PYPI else "npm"
     if info is None or info.exists is None:
-        known_top = (normalize_pypi(dep.name) if dep.ecosystem == PYPI else dep.name) in top_packages(dep.ecosystem)
-        if info is not None and not known_top:
+        # Being on the bundled popular list is not a registry check: a cache miss stays unverified (rule 1, Qodo on #42).
+        if info is not None:
             f(INFO, "not-checked", f"registry not checked ({info.error or 'unknown'})")
     elif info.exists is False:
         f(HIGH, "not-found", f"does not exist on {reg} ({info.note or '404'}); anyone could register it")

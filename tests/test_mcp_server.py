@@ -87,3 +87,24 @@ def test_tool_is_discoverable_and_matches_direct_call():
 def test_invalid_calls_over_protocol_are_errors(arguments):
     _, result = anyio.run(_over_protocol, arguments)
     assert result.isError
+
+
+# Qodo review on #42, finding 1: an offline cache miss on a popular package is still unverified (AGENTS.md rule 1).
+@pytest.mark.parametrize("command", ["pip install requests", "npm i express"])
+def test_popular_package_offline_is_unverified_not_ok(command):
+    out = check_install(command, offline=True)
+    assert out["verdict"] == "unverified" and out["exit_code"] == 3
+
+
+# Qodo review on #42, finding 2: a requirements file named in the command is not read, so it cannot pass as ok.
+@pytest.mark.parametrize("command", ["pip install -r requirements.txt json", "pip install json --requirement=dev.txt",
+                                     "uv pip install -r req.txt json", "pip install -e . json"])
+def test_unread_install_source_makes_it_unverified(command):
+    out = check_install(command, offline=True)
+    assert out["verdict"] == "unverified" and out["exit_code"] == 3
+    assert any(f["rule"] == "not-checked" and "not read" in f["message"] for f in out["findings"])
+
+
+def test_only_a_requirements_file_is_unverified_not_no_install():
+    out = check_install("pip install -r requirements.txt", offline=True)
+    assert out["verdict"] == "unverified" and out["checked"] == 0
