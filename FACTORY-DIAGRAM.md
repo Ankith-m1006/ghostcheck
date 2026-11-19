@@ -30,7 +30,8 @@ flowchart TD
     G5 -- no --> FIX
     G4 -- clean --> WF{"Qodo workflow (Day 14)<br/>'ghostcheck gate': no findings<br/>at Medium or higher, all categories"}
     WF --> GU{"Approval guard: does the PR touch<br/>ghostcheck/rules.py or<br/>ghostcheck/mcp_server.py?"}
-    GU -- "yes: verdict logic" --> HR["No label by design:<br/>owner reviews the diff<br/>and approves on GitHub"] --> OM{"Owner-only merge<br/>(the named agent may not merge)"}
+    GU -- "yes: verdict logic" --> HR["No label by design:<br/>owner reviews the diff<br/>and approves on GitHub"] --> OM{"Owner-only merge<br/>(the named agent may not merge;<br/>needs Gate 5 green too)"}
+    G5 -- pass --> OM
     OM -- merge --> MAIN
     OM -- "changes needed" --> FIX
     GU -- no --> LB["'Qodo approved' label<br/>(met the workflow criteria only)"] --> M{"Gate 6: merge decision<br/>owner, or the agent the owner<br/>named for this repo"}
