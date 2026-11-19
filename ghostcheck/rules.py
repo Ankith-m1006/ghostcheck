@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from .parsers import Dependency, PYPI, normalize_pypi
 from .registry import PackageInfo, Registry
 from .stdlib import is_node_builtin_install, python_stdlib
-from .typosquat import llm_ghosts, nearest_top_package
+from .typosquat import llm_ghosts, nearest_top_package, top_packages
 
 HIGH, MEDIUM, INFO = "HIGH", "MEDIUM", "INFO"
 
@@ -82,6 +82,12 @@ def check_dependency(dep: Dependency, registry: Registry | None, now: datetime |
         if info.note.startswith("npm security holding"):
             f(HIGH, "security-placeholder", "npm replaced this package with a security placeholder (it was malicious)")
         age = info.age_days(now)
+        known_top = (normalize_pypi(dep.name) if dep.ecosystem == PYPI else dep.name) in top_packages(dep.ecosystem)
+        # the npm popular fast path skips the dated document on purpose (cached entries carry only the note)
+        dates_skipped = (info.extra or {}).get("dates_skipped") or info.note.startswith("popular (")
+        if age is None and not known_top and not dates_skipped:
+            # Issue #44: no release date means the age checks below cannot run; say so instead of passing silently.
+            f(MEDIUM, "age-unknown", f"{reg} gave no release date, so it could be brand-new; check it before installing")
         if age is not None and age < NEW_DAYS:
             f(HIGH, "brand-new", f"first published {age:.0f} days ago ({info.first_release[:10]})")
         elif age is not None and age < YOUNG_DAYS:

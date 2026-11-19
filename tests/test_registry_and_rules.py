@@ -186,3 +186,54 @@ def test_offline_cache_miss_on_a_top_package_is_not_checked(tmp_path):
     from ghostcheck.rules import UNVERIFIED, check_dependency, exit_code
     findings, _ = check_dependency(Dependency("requests", "pypi", "test"), Registry(cache_path=tmp_path / "c.json", offline=True))
     assert any(f.rule == UNVERIFIED for f in findings) and exit_code(findings) == 3
+
+
+# Issue #44: a package the registry says exists but cannot date must not pass the age checks silently
+class _Undated:
+    def __init__(self, first_release=None):
+        self.first_release = first_release
+
+    def lookup(self, name, ecosystem):
+        from ghostcheck.registry import PackageInfo
+        return PackageInfo(name, ecosystem, True, first_release=self.first_release)
+
+    def ensure_downloads(self, info):
+        return info
+
+
+@pytest.mark.parametrize("eco", [PYPI, NPM])
+def test_undated_package_gets_age_unknown(now, eco):
+    hits = rules_hit(Dependency("some-undated-pkg-xyz", eco), _Undated(), now)
+    assert (MEDIUM, "age-unknown") in hits
+
+
+def test_undated_package_does_not_change_exit_code(now):
+    found, _ = check_dependency(Dependency("some-undated-pkg-xyz", PYPI), _Undated(), now)
+    assert exit_code(found) == 0
+
+
+def test_dated_old_package_has_no_age_unknown(now):
+    hits = rules_hit(Dependency("some-old-pkg-xyz", PYPI), _Undated("2015-01-01T00:00:00Z"), now)
+    assert not any(r == "age-unknown" for _, r in hits)
+
+
+def test_popular_undated_package_is_not_flagged(now):
+    hits = rules_hit(Dependency("requests", PYPI), _Undated(), now)
+    assert not any(r == "age-unknown" for _, r in hits)
+
+
+# Qodo review on #46: the npm popular fast path (HEAD only) has no date on purpose; that is not "age unknown"
+def test_npm_popular_head_only_is_not_age_unknown(net, now):
+    name = "some-popular-lib-outside-top-list"
+    net.routes[f"https://api.npmjs.org/downloads/point/last-week/{name}"] = (200, {"downloads": NPM_POPULAR_WEEKLY * 3})
+    net.routes[f"https://registry.npmjs.org/{name}"] = (200, {"huge": True})
+    hits = rules_hit(Dependency(name, NPM), reg(net, now), now)
+    assert not any(r == "age-unknown" for _, r in hits)
+
+
+def test_npm_full_document_without_dates_is_age_unknown(net, now):
+    name = "some-undated-npm-lib-xyz"
+    net.routes[f"https://api.npmjs.org/downloads/point/last-week/{name}"] = (200, {"downloads": 300})
+    net.routes[f"https://registry.npmjs.org/{name}"] = (200, {"name": name, "versions": {"1.0.0": {}}})
+    hits = rules_hit(Dependency(name, NPM), reg(net, now), now)
+    assert (MEDIUM, "age-unknown") in hits
