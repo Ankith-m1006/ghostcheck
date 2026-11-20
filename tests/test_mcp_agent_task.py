@@ -72,11 +72,14 @@ def test_check_install_never_saves_the_cache(monkeypatch):
     assert saved == []
 
 
-def _snapshot(root: Path) -> dict[str, tuple[int, str]]:
+def _snapshot(root: Path) -> dict[str, tuple]:
+    """Every entry under root: files by size + sha256, directories too (Qodo on #52: an empty new dir is a write)."""
     import hashlib
     return {
-        str(p.relative_to(root)): (p.stat().st_size, hashlib.sha256(p.read_bytes()).hexdigest())
-        for p in sorted(root.rglob("*")) if p.is_file()
+        p.relative_to(root).as_posix(): (
+            ("file", p.stat().st_size, hashlib.sha256(p.read_bytes()).hexdigest()) if p.is_file() else ("dir",)
+        )
+        for p in sorted(root.rglob("*"))
     }
 
 
@@ -95,6 +98,12 @@ def _seed_warm_cache(path: Path) -> None:
     path.write_text(json.dumps(entries, indent=1, sort_keys=True), "utf-8")
 
 
+def test_snapshot_sees_a_new_empty_directory(tmp_path):
+    before = _snapshot(tmp_path)
+    (tmp_path / "new-dir").mkdir()
+    assert _snapshot(tmp_path) != before
+
+
 def test_no_writes_on_cold_and_warm_cache(tmp_path):
     """Issue #51: same fixture twice, cold then warm cache; the filesystem is unchanged both times."""
     cache = tmp_path / "cache.json"
@@ -110,6 +119,7 @@ def test_no_writes_on_cold_and_warm_cache(tmp_path):
     _seed_warm_cache(cache)
     before = _snapshot(tmp_path)
     (warm,) = anyio.run(_stdio_task, tmp_path, fixture)
-    assert _snapshot(tmp_path) == before == {"cache.json": before["cache.json"]}
+    assert list(before) == ["cache.json"]
+    assert _snapshot(tmp_path) == before
     # The cache was really read: flask is only verifiable from the seeded entry.
     assert warm.structuredContent["verdict"] == "ok", warm.structuredContent
