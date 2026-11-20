@@ -70,3 +70,46 @@ def test_check_install_never_saves_the_cache(monkeypatch):
     monkeypatch.setattr(mcp_server.Registry, "save", lambda self: saved.append(1))
     mcp_server.check_install("pip install flask reqests", offline=True)
     assert saved == []
+
+
+def _snapshot(root: Path) -> dict[str, tuple[int, str]]:
+    import hashlib
+    return {
+        str(p.relative_to(root)): (p.stat().st_size, hashlib.sha256(p.read_bytes()).hexdigest())
+        for p in sorted(root.rglob("*")) if p.is_file()
+    }
+
+
+def _seed_warm_cache(path: Path) -> None:
+    import json
+    from dataclasses import asdict
+    from ghostcheck.registry import PYPI, PackageInfo, cache_key
+    entries = {}
+    for name in ("flask", "requests"):
+        info = PackageInfo(
+            name, PYPI, True, first_release="2010-04-06T00:00:00Z", latest_release="2026-01-01T00:00:00Z",
+            n_releases=60, maintainers=3, weekly_downloads=50_000_000, monthly_downloads=200_000_000,
+            checked_at="2026-11-20T00:00:00Z",
+        )
+        entries[cache_key(name, PYPI)] = asdict(info)
+    path.write_text(json.dumps(entries, indent=1, sort_keys=True), "utf-8")
+
+
+def test_no_writes_on_cold_and_warm_cache(tmp_path):
+    """Issue #51: same fixture twice, cold then warm cache; the filesystem is unchanged both times."""
+    cache = tmp_path / "cache.json"
+    fixture = ["pip install flask"]
+
+    # Run 1: cold, no cache file exists.
+    before = _snapshot(tmp_path)
+    (cold,) = anyio.run(_stdio_task, tmp_path, fixture)
+    assert _snapshot(tmp_path) == before == {}
+    assert cold.structuredContent["verdict"] != "ok"  # offline cache miss fails closed
+
+    # Run 2: warm, the cache is seeded before the call.
+    _seed_warm_cache(cache)
+    before = _snapshot(tmp_path)
+    (warm,) = anyio.run(_stdio_task, tmp_path, fixture)
+    assert _snapshot(tmp_path) == before == {"cache.json": before["cache.json"]}
+    # The cache was really read: flask is only verifiable from the seeded entry.
+    assert warm.structuredContent["verdict"] == "ok", warm.structuredContent
