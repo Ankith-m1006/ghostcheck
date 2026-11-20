@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import ConfigDict
 
 from . import cli
@@ -49,10 +50,8 @@ def check_install(command: str, offline: bool = False) -> dict[str, Any]:
     registry = Registry(cache_path=cli.default_cache_path(), offline=offline)
     for dep in unique:
         findings += check_dependency(dep, registry)[0]
-    try:
-        registry.save()
-    except OSError:
-        pass
+    # No registry.save(): the tool is declared read-only, so it reads the cache the CLI keeps but never writes it
+    # (Qodo on #49).
     code = exit_code(findings)
     verdict = VERDICTS[code]
     if verdict == "ok" and any(f.severity == MEDIUM for f in findings):
@@ -60,7 +59,9 @@ def check_install(command: str, offline: bool = False) -> dict[str, Any]:
     return {"verdict": verdict, "exit_code": code, "checked": len(unique), "findings": [asdict(f) for f in findings]}
 
 
-server.tool(name="check_install", structured_output=True)(check_install)
+# Tell the agent's client what this tool may do (issue #48): it only reads public registries and never runs the command.
+READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+server.tool(name="check_install", structured_output=True, annotations=READ_ONLY)(check_install)
 # Reject arguments the tool does not define instead of silently ignoring them (issue #41, criterion 4).
 server._tool_manager.get_tool("check_install").fn_metadata.arg_model.model_config = ConfigDict(extra="forbid")
 server._tool_manager.get_tool("check_install").fn_metadata.arg_model.model_rebuild(force=True)
