@@ -61,5 +61,12 @@ def test_agent_task_over_real_stdio_blocks_the_typo_and_runs_nothing(tmp_path):
     # Criterion 4: checking a command never runs it.
     assert not sneaky.isError
     assert not marker.exists()
-    # Criterion 5: nothing written outside the cache file.
-    assert {p.name for p in tmp_path.iterdir()} <= {"cache.json"}
+    # Criterion 5 (tightened after Qodo on #49): a read-only tool writes nothing, not even its cache.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_check_install_never_saves_the_cache(monkeypatch):
+    saved = []
+    monkeypatch.setattr(mcp_server.Registry, "save", lambda self: saved.append(1))
+    mcp_server.check_install("pip install flask reqests", offline=True)
+    assert saved == []

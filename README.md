@@ -48,7 +48,7 @@ the command (`-r req.txt`, `-e ./lib`) is not read by the tool, so it is reporte
 
 Permissions: the tool is marked read-only (`readOnlyHint`, not destructive, idempotent, `openWorldHint` because it
 reads the public PyPI and npm registries), so a client can let the agent call it without a prompt. It never runs the
-command it checks, and the only file it writes is its cache (`GHOSTCHECK_CACHE`). The server offers this one tool and
+command it checks, and it writes no files: it reads the cache the CLI keeps (`GHOSTCHECK_CACHE`) but never saves it. The server offers this one tool and
 no resources or prompts. `tests/test_mcp_agent_task.py` runs a real agent task over stdio to prove it.
 
 ## Roadmap

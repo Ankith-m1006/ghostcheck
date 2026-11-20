@@ -50,10 +50,8 @@ def check_install(command: str, offline: bool = False) -> dict[str, Any]:
     registry = Registry(cache_path=cli.default_cache_path(), offline=offline)
     for dep in unique:
         findings += check_dependency(dep, registry)[0]
-    try:
-        registry.save()
-    except OSError:
-        pass
+    # No registry.save(): the tool is declared read-only, so it reads the cache the CLI keeps but never writes it
+    # (Qodo on #49).
     code = exit_code(findings)
     verdict = VERDICTS[code]
     if verdict == "ok" and any(f.severity == MEDIUM for f in findings):
