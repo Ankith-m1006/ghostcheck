@@ -46,6 +46,11 @@ One tool, `check_install(command, offline=false)`, reads every install in a comm
 the command (`-r req.txt`, `-e ./lib`) is not read by the tool, so it is reported as not verified; check it with the CLI. An empty, non-string or over-long
 `command`, or an argument the tool does not define, is rejected as an error.
 
+Permissions: the tool is marked read-only (`readOnlyHint`, not destructive, idempotent, `openWorldHint` because it
+reads the public PyPI and npm registries), so a client can let the agent call it without a prompt. It never runs the
+command it checks, and the only file it writes is its cache (`GHOSTCHECK_CACHE`). The server offers this one tool and
+no resources or prompts. `tests/test_mcp_agent_task.py` runs a real agent task over stdio to prove it.
+
 ## Roadmap
 This repository is built as a "software factory" for the Qodo hackathon: rules in `AGENTS.md`, tickets, agent-written
 PRs reviewed by Qodo. Next: an approve / escalate gate for risky packages.

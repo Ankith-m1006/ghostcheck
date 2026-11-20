@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import ConfigDict
 
 from . import cli
@@ -60,7 +61,9 @@ def check_install(command: str, offline: bool = False) -> dict[str, Any]:
     return {"verdict": verdict, "exit_code": code, "checked": len(unique), "findings": [asdict(f) for f in findings]}
 
 
-server.tool(name="check_install", structured_output=True)(check_install)
+# Tell the agent's client what this tool may do (issue #48): it only reads public registries and never runs the command.
+READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+server.tool(name="check_install", structured_output=True, annotations=READ_ONLY)(check_install)
 # Reject arguments the tool does not define instead of silently ignoring them (issue #41, criterion 4).
 server._tool_manager.get_tool("check_install").fn_metadata.arg_model.model_config = ConfigDict(extra="forbid")
 server._tool_manager.get_tool("check_install").fn_metadata.arg_model.model_rebuild(force=True)
