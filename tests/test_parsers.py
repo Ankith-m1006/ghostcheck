@@ -537,3 +537,13 @@ from ghostcheck.parsers import unread_install_sources_with_kind
 ])
 def test_unread_sources_with_kind(text, expected):
     assert unread_install_sources_with_kind(text) == expected
+
+
+@pytest.mark.parametrize("cmd,want", [
+    ("conda install --file pk.txt", []),
+    ("mamba install --file pk.txt numpy", ["numpy"]),
+    ("conda install -f pk.txt", []),
+])
+def test_conda_file_value_is_not_a_package(cmd, want):
+    # found by the install-source audit matrix (#53): `--file pk.txt` was looked up as a package named pk.txt
+    assert [d.name for d in parse_pip_command(cmd)] == want
