@@ -100,6 +100,14 @@ _PIP_CMD = re.compile(
 _UV_PIPX_VALUE_FLAGS = {"--group", "--optional", "--extra", "--index", "--default-index", "--python", "-p",
                         "--package", "--project", "--directory", "--marker", "-m", "--tag", "--branch", "--rev",
                         "--script", "--pip-args", "--suffix", "--spec", "--preinstall", "--index-url"}
+# uv pip install options that take a value which is never a package (#55). Package-valued options
+# (-P/--upgrade-package, --reinstall-package, --exclude-newer-package PKG=DATE) are left out on purpose,
+# so their value is still checked.
+_UV_PIP_VALUE_FLAGS = {"-p", "--python", "--index-strategy", "--resolution", "--prerelease", "--exclude-newer",
+                       "--link-mode", "--python-platform", "--torch-backend", "--index", "--default-index",
+                       "--color", "--allow-insecure-host",
+                       # file-valued: reported as unread sources by unread_install_sources_with_kind
+                       "--requirements", "--constraints", "--overrides"}
 # Package runners download a package and run it in one step (issue #13). Only the package is a
 # dependency; everything after it is the program's own arguments.
 _NPM_RUNNER = re.compile(r"(?:^|[\s;&|`(])(?:sudo\s+)?(npx|bunx|npm\s+exec|pnpm\s+dlx|yarn\s+dlx)\s+(.+)", re.I)
@@ -324,6 +332,8 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
         for m in _PIP_CMD.finditer(line):
             tokens = _split_args(m.group(1) or m.group(2))
             value_flags = _PIP_VALUE_FLAGS | (_UV_PIPX_VALUE_FLAGS if m.group(2) else set())
+            if re.search(r"\buv\s+pip\s+install\b", m.group(0), re.I):
+                value_flags = value_flags | _UV_PIP_VALUE_FLAGS
             if re.search(r"\b(?:conda|mamba)\s+(?:install|add)\b", m.group(0), re.I):
                 # conda/mamba -C (--use-index-cache) takes no value; --file names a package list, not a package (#53)
                 value_flags = (value_flags - {"-C"}) | {"--file"}
@@ -349,7 +359,9 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
     return _dedupe(deps, normalize_pypi)
 
 _UNREAD_SOURCE_FLAGS = {"--requirement": "file", "--constraint": "file", "--editable": "editable",
-                        "-r": "file", "-c": "file", "-e": "editable"}
+                        "-r": "file", "-c": "file", "-e": "editable",
+                        # uv pip spellings (#55)
+                        "--requirements": "file", "--constraints": "file", "--overrides": "file"}
 # conda/mamba: -c is a channel, not a constraints file; --file names a package list that is not read
 _CONDA_UNREAD_FLAGS = {"--file": "conda-file", "-f": "conda-file"}
 
