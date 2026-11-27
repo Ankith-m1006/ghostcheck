@@ -562,3 +562,25 @@ def test_uv_pip_value_options_are_not_packages(cmd, expected):
 def test_plain_pip_has_no_dash_p_option():
     # pip has no -p, so the word after it stays a package (unchanged by #55)
     assert names(parse_pip_command("pip install -p requests")) == ["requests"]
+
+
+# Qodo local review of the #55 fix: more uv pip options take a value. A file-valued one must be reported
+# as an unread source (fail closed), never silently skipped.
+@pytest.mark.parametrize("cmd,expected", [
+    ("uv pip install --color never flask", ["flask"]),
+    ("uv pip install --allow-insecure-host example.org flask", ["flask"]),
+    # package-valued (PKG=DATE): the package is still checked (Qodo local review, round 2)
+    ("uv pip install --exclude-newer-package flsk=2024-01-01 httpx", ["flsk", "httpx"]),
+    ("uv pip install --requirements req.txt flask", ["flask"]),
+    ("uv pip install --constraints c.txt --overrides o.txt flask", ["flask"]),
+])
+def test_more_uv_pip_value_options_are_not_packages(cmd, expected):
+    assert names(parse_pip_command(cmd)) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("uv pip install --requirements req.txt flask", [("req.txt", "file")]),
+    ("uv pip install --constraints=c.txt --overrides o.txt", [("c.txt", "file"), ("o.txt", "file")]),
+])
+def test_uv_pip_long_file_options_are_unread_sources(text, expected):
+    assert unread_install_sources_with_kind(text) == expected
