@@ -1,0 +1,25 @@
+# TEMPORARY (Day 20, issue #57): a controlled failure to prove the alert route. It expects the real package
+# `requests` to be blocked, which the deployment correctly never does, so every run fails on purpose and goes
+# through the same alert route as the real monitor (synthetic-monitor-run.yml). It only reads the deployment.
+# Remove this file once one scheduled run has opened its alert issue.
+name: synthetic-monitor-canary-fail
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitor:
+    uses: ./.github/workflows/synthetic-monitor-run.yml
+    permissions:
+      contents: read
+      issues: write
+    with:
+      checks_json: >-
+        [{"name": "CANARY: deliberately unmet, requests is not a typo",
+          "command": "pip install requests",
+          "expect": {"verdict": "block", "exit_code": 1}}]
