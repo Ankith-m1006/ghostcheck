@@ -33,27 +33,29 @@ FILES = {
     "lib/pyproject.toml": "[project]\nname = 'lib'\n",
 }
 
-# (id, positional files, flag, command, expected unread sources) - one row per install-source form.
+# (id, positional files, flag, command, expected unread sources, expected checked count) - one row per
+# install-source form. The checked count proves that a source treated as "already read" really had its packages
+# checked (Qodo on #54): a row that suppresses a warning must also show the packages it claims to cover.
 # Rows marked #45 replay the forms Qodo found one review round at a time on PR #45.
 CASES = [
-    ("pip-r", [], "--cmd", "pip install -r req.txt", ["req.txt"]),
-    ("pip-r-joined", [], "--cmd", "pip install -rreq.txt", ["req.txt"]),
-    ("pip-requirement-eq", [], "--pip", "pip install requests --requirement=req.txt", ["req.txt"]),
-    ("pip-constraint", [], "--cmd", "pip install -c cons.txt requests", ["cons.txt"]),
-    ("uv-editable", [], "--cmd", "uv pip install -e ./lib", ["./lib"]),
-    ("conda-file-long", [], "--cmd", "conda install --file pk.txt", ["pk.txt"]),
-    ("conda-file-short #45", [], "--cmd", "conda install -f pk.txt", ["pk.txt"]),
-    ("conda-channel-not-a-file #45", [], "--cmd", "conda install -c conda-forge rdkit", []),
-    ("positional-covers-same-file", ["req.txt"], "--cmd", "pip install -r req.txt", []),
-    ("include-already-read #45", ["top.txt"], "--cmd", "pip install -r child.txt", []),
-    ("cd-points-elsewhere #45", ["req.txt"], "--cmd", "cd sub && pip install -r req.txt", ["req.txt"]),
-    ("uv-directory-points-elsewhere #45", ["req.txt"], "--cmd", "uv --directory sub add -r req.txt", ["req.txt"]),
-    ("conda-list-never-masked #45", ["specs.txt"], "--cmd", "conda install --file specs.txt", ["specs.txt"]),
-    ("repeated-source-once #45", [], "--cmd", "pip install -r req.txt -r req.txt", ["req.txt"]),
+    ("pip-r", [], "--cmd", "pip install -r req.txt", ["req.txt"], 0),
+    ("pip-r-joined", [], "--cmd", "pip install -rreq.txt", ["req.txt"], 0),
+    ("pip-requirement-eq", [], "--pip", "pip install requests --requirement=req.txt", ["req.txt"], 1),
+    ("pip-constraint", [], "--cmd", "pip install -c cons.txt requests", ["cons.txt"], 1),
+    ("uv-editable", [], "--cmd", "uv pip install -e ./lib", ["./lib"], 0),
+    ("conda-file-long", [], "--cmd", "conda install --file pk.txt", ["pk.txt"], 0),
+    ("conda-file-short #45", [], "--cmd", "conda install -f pk.txt", ["pk.txt"], 0),
+    ("conda-channel-not-a-file #45", [], "--cmd", "conda install -c conda-forge rdkit", [], 1),
+    ("positional-covers-same-file", ["req.txt"], "--cmd", "pip install -r req.txt", [], 1),
+    ("include-already-read #45", ["top.txt"], "--cmd", "pip install -r child.txt", [], 1),
+    ("cd-points-elsewhere #45", ["req.txt"], "--cmd", "cd sub && pip install -r req.txt", ["req.txt"], 1),
+    ("uv-directory-points-elsewhere #45", ["req.txt"], "--cmd", "uv --directory sub add -r req.txt", ["req.txt"], 1),
+    ("conda-list-never-masked #45", ["specs.txt"], "--cmd", "conda install --file specs.txt", ["specs.txt"], 0),
+    ("repeated-source-once #45", [], "--cmd", "pip install -r req.txt -r req.txt", ["req.txt"], 0),
 ]
 
 
-def run_case(root: Path, files: list[str], flag: str, cmd: str) -> tuple[list[str], list[str]]:
+def run_case(root: Path, files: list[str], flag: str, cmd: str) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         for name, text in FILES.items():
@@ -65,35 +67,44 @@ def run_case(root: Path, files: list[str], flag: str, cmd: str) -> tuple[list[st
                 "--cache", str(work / "cache.json")]
         out = subprocess.run(argv, cwd=work, env=env, capture_output=True, text=True, timeout=120)
         try:
-            findings = json.loads(out.stdout)["findings"]
+            doc = json.loads(out.stdout)
+            findings = doc["findings"]
         except (ValueError, KeyError):
-            return ["<no JSON: exit %d %s>" % (out.returncode, out.stderr.strip()[-120:])], []
+            return {"unread": ["<no JSON: exit %d %s>" % (out.returncode, out.stderr.strip()[-120:])],
+                    "bad_advice": [], "checked": None, "exit": out.returncode, "json_exit": None}
         unread = [f for f in findings if "not read" in f["message"]]
-        bad_advice = [f["package"] for f in unread if f["message"].find("editable") == -1
-                      and f["package"].rstrip("/\\").endswith("lib")]
-        return sorted(f["package"] for f in unread), bad_advice
+        # an editable path is a folder: it must be labelled editable and never told to run `ghostcheck <file>`
+        bad_advice = [f["package"] for f in unread if f["package"].rstrip("/\\").endswith("lib")
+                      and ("editable" not in f["message"] or "ghostcheck <file>" in f["message"])]
+        return {"unread": sorted(f["package"] for f in unread), "bad_advice": bad_advice,
+                "checked": doc.get("checked"), "exit": out.returncode, "json_exit": doc.get("exit_code")}
 
 
 def main(argv: list[str]) -> int:
     root = Path(argv[1]).resolve() if len(argv) > 1 else DEFAULT_ROOT
     evidence = Path(argv[2]) if len(argv) > 2 else None
     rows, fails = [], 0
-    for cid, files, flag, cmd, want in CASES:
-        got, bad_advice = run_case(root, files, flag, cmd)
-        ok = got == sorted(want) and not bad_advice
-        if not ok:
-            if any(w not in got for w in want):
-                why = "FAIL (fail-open: source never reported)"
-            elif bad_advice:
-                why = "FAIL (editable path told to run ghostcheck <file>)"
-            else:
-                why = "FAIL (false alarm or duplicate)"
-            fails += 1
+    for cid, files, flag, cmd, want, want_checked in CASES:
+        r = run_case(root, files, flag, cmd)
+        got = r["unread"]
+        # an unread source must fail closed: exit 3 from the process and the same code in the JSON (Qodo on #54)
+        exit_ok = not want or (r["exit"] == 3 and r["json_exit"] == 3)
+        if any(w not in got for w in want):
+            why = "FAIL (fail-open: source never reported)"
+        elif not exit_ok:
+            why = f"FAIL (fail-open: reported but exit {r['exit']}, JSON exit_code {r['json_exit']})"
+        elif r["checked"] != want_checked:
+            why = f"FAIL (checked {r['checked']} packages, expected {want_checked})"
+        elif r["bad_advice"]:
+            why = "FAIL (editable path given file advice)"
+        elif got != sorted(want):
+            why = "FAIL (false alarm or duplicate)"
         else:
             why = "PASS"
+        fails += why != "PASS"
         shown = " ".join(files + [flag, repr(cmd)])
-        rows.append(f"| {cid} | `{shown}` | {want} | {got} | {why} |")
-    table = ["| case | input | expected unread | got | result |", "|---|---|---|---|---|", *rows,
+        rows.append(f"| {cid} | `{shown}` | {want} | {got} | {r['checked']} | {r['exit']} | {why} |")
+    table = ["| case | input | expected unread | got | checked | exit | result |", "|---|---|---|---|---|---|---|", *rows,
              "", f"{len(CASES) - fails}/{len(CASES)} pass, {fails} fail (root: {root.name})"]
     text = "\n".join(table)
     print(text)
