@@ -537,3 +537,28 @@ from ghostcheck.parsers import unread_install_sources_with_kind
 ])
 def test_unread_sources_with_kind(text, expected):
     assert unread_install_sources_with_kind(text) == expected
+
+
+# #55: uv pip install takes uv's own options; their values are not packages
+@pytest.mark.parametrize("cmd,expected", [
+    ("uv pip install -p python3.12 requests", ["requests"]),
+    ("uv pip install --python=3.12 requests", ["requests"]),
+    ("uv pip install --index-strategy unsafe-best-match requests", ["requests"]),
+    ("uv pip install --resolution lowest-direct flask", ["flask"]),
+    ("uv pip install --prerelease allow flask", ["flask"]),
+    ("uv pip install --exclude-newer 2024-01-01 flask", ["flask"]),
+    ("uv pip install --link-mode copy flask", ["flask"]),
+    ("uv pip install --python-platform linux flask", ["flask"]),
+    ("uv pip install --torch-backend cpu torch", ["torch"]),
+    ("uv pip install --index https://example.org/simple --default-index https://pypi.org/simple httpx", ["httpx"]),
+    # a value that is itself a package name is still checked (fail closed)
+    ("uv pip install -P reqeusts requests", ["reqeusts", "requests"]),
+    ("uv pip install --reinstall-package flsk flask", ["flsk", "flask"]),
+])
+def test_uv_pip_value_options_are_not_packages(cmd, expected):
+    assert names(parse_pip_command(cmd)) == expected
+
+
+def test_plain_pip_has_no_dash_p_option():
+    # pip has no -p, so the word after it stays a package (unchanged by #55)
+    assert names(parse_pip_command("pip install -p requests")) == ["requests"]
