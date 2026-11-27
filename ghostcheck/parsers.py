@@ -335,7 +335,8 @@ def parse_pip_command(text: str, source: str = "pip command") -> list[Dependency
             if re.search(r"\buv\s+pip\s+install\b", m.group(0), re.I):
                 value_flags = value_flags | _UV_PIP_VALUE_FLAGS
             if re.search(r"\b(?:conda|mamba)\s+(?:install|add)\b", m.group(0), re.I):
-                value_flags = value_flags - {"-C"}  # conda/mamba -C (--use-index-cache) takes no value
+                # conda/mamba -C (--use-index-cache) takes no value; --file names a package list, not a package (#53)
+                value_flags = (value_flags - {"-C"}) | {"--file"}
             skip = False
             for tok in tokens:
                 if skip:
