@@ -143,3 +143,44 @@ def test_live_fetcher_uses_registry_transport_with_a_short_timeout(monkeypatch):
     _, _, out = call(None, "pip install requests")
     assert seen["timeout"] == api.REQUEST_TIMEOUT_S
     assert out["verdict"] == "unverified"
+
+
+class _Captured:
+    def __init__(self):
+        import io
+        self.status, self.headers, self.wfile = None, {}, io.BytesIO()
+
+
+def _drive_handler(method: str, monkeypatch, net):
+    """Run the real handler class the way BaseHTTPRequestHandler dispatches: getattr(self, 'do_' + method)."""
+    cap = _Captured()
+    h = api.handler.__new__(api.handler)
+    h.path, h.command, h.wfile = "/api/check?command=pip+install+requests", method, cap.wfile
+    h.send_response = lambda code, message=None: setattr(cap, "status", code)
+    h.send_header = lambda k, v: cap.headers.__setitem__(k, v)
+    h.end_headers = lambda: None
+    real = api.respond
+    monkeypatch.setattr(api, "respond", lambda m, p: real(m, p, fetcher=net))
+    getattr(h, "do_" + method)()
+    return cap
+
+
+@pytest.mark.parametrize("method", ["HEAD", "OPTIONS", "TRACE", "CONNECT", "PROPFIND", "POST"])
+def test_every_non_get_method_gets_json_405_from_the_handler(method, monkeypatch, net):
+    """Qodo on #58: HEAD and OPTIONS fell through to BaseHTTPRequestHandler's HTML 501."""
+    cap = _drive_handler(method, monkeypatch, net)
+    assert cap.status == 405 and cap.headers["Allow"] == "GET"
+    assert cap.headers["Content-Type"].startswith("application/json")
+    body = cap.wfile.getvalue()
+    if method == "HEAD":
+        assert body == b""  # HEAD carries headers only
+    else:
+        assert "error" in json.loads(body)
+    assert net.calls == []
+
+
+def test_handler_get_writes_the_json_verdict(monkeypatch, net):
+    net.pypi("requests", [4000, 30, 10], monthly=900_000_000)
+    cap = _drive_handler("GET", monkeypatch, net)
+    assert cap.status == 200 and json.loads(cap.wfile.getvalue())["verdict"] == "ok"
+    assert cap.headers["Content-Length"] == str(len(cap.wfile.getvalue()))

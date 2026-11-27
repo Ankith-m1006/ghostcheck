@@ -102,19 +102,12 @@ class handler(BaseHTTPRequestHandler):  # Vercel's Python runtime looks for this
             self.send_header(k, v)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        if method != "HEAD":  # HEAD carries headers only
+            self.wfile.write(data)
 
-    def do_GET(self):
-        self._send("GET")
-
-    def do_POST(self):
-        self._send("POST")
-
-    def do_PUT(self):
-        self._send("PUT")
-
-    def do_DELETE(self):
-        self._send("DELETE")
-
-    def do_PATCH(self):
-        self._send("PATCH")
+    def __getattr__(self, name: str):
+        # BaseHTTPRequestHandler dispatches to do_<METHOD>; route every method (HEAD, OPTIONS, TRACE, ...) through
+        # respond(), so anything but GET gets a JSON 405 instead of the base class's HTML 501 (Qodo on #58).
+        if name.startswith("do_") and name[3:]:
+            return lambda: self._send(name[3:])
+        raise AttributeError(name)

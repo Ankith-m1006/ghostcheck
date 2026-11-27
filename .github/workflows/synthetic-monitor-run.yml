@@ -29,16 +29,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: pip install requests==2.34.2
-      - name: Assert live behaviour
+      - name: Call the deployment and assert live behaviour
         env:
           TARGET: ${{ inputs.target }}
           CHECKS_JSON: ${{ inputs.checks_json }}
         run: |
           checks=monitor/checks.json
           if [ -n "$CHECKS_JSON" ]; then printf '%s' "$CHECKS_JSON" > "$RUNNER_TEMP/checks.json"; checks="$RUNNER_TEMP/checks.json"; fi
-          python monitor/synthetic_check.py "$TARGET" --checks "$checks" --report report.md
+          bash monitor/fetch.sh "$TARGET" "$checks" "$RUNNER_TEMP/responses"
+          python monitor/synthetic_check.py --target "$TARGET" --checks "$checks" --responses "$RUNNER_TEMP/responses" --report report.md
       - name: Keep the report
         id: keep
         if: always()
