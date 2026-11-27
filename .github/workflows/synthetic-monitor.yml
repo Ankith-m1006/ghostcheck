@@ -1,0 +1,23 @@
+# Day 20 (issue #57): the real synthetic monitor. Every 30 minutes it asks the deployed check API
+# (nonproduction demo on Vercel) about a typo and a real package, against the live PyPI registry.
+# A failure opens or updates the issue "Synthetic monitor alert: synthetic-monitor".
+name: synthetic-monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: synthetic-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    uses: ./.github/workflows/synthetic-monitor-run.yml
+    permissions:
+      contents: read
+      issues: write

@@ -1,0 +1,8 @@
+.claude/
+.github/
+.pytest_cache/
+.venv/
+audits/
+tests/
+*.egg-info/
+__pycache__/

@@ -1,0 +1,27 @@
+[
+  {
+    "name": "typo of a popular package is blocked",
+    "command": "pip install requestss",
+    "expect": {
+      "verdict": "block",
+      "exit_code": 1,
+      "checked": 1,
+      "deployment": "nonproduction-demo",
+      "finding_any_of": [
+        {"package": "requestss", "rule": "not-found", "severity": "HIGH"},
+        {"package": "requestss", "rule": "typosquat", "message_contains": "'requests'"}
+      ]
+    }
+  },
+  {
+    "name": "the real package is clean",
+    "command": "pip install requests",
+    "expect": {
+      "verdict": "ok",
+      "exit_code": 0,
+      "checked": 1,
+      "deployment": "nonproduction-demo",
+      "findings_empty": true
+    }
+  }
+]

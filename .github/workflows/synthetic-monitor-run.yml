@@ -1,0 +1,70 @@
+# Day 20 (issue #57): one synthetic-monitor run against the deployed check API, plus its alert route.
+# Called by synthetic-monitor.yml (the real monitor). Any temporary monitor must call this same workflow,
+# so it uses the same alert route.
+name: synthetic-monitor-run
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Base URL of the deployment (nonproduction demo)
+        type: string
+        default: https://ghostcheck-api-demo.vercel.app
+      checks_json:
+        description: Checks to run, as JSON. Empty means monitor/checks.json.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      report: ${{ steps.keep.outputs.report }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install requests==2.34.2
+      - name: Assert live behaviour
+        env:
+          TARGET: ${{ inputs.target }}
+          CHECKS_JSON: ${{ inputs.checks_json }}
+        run: |
+          checks=monitor/checks.json
+          if [ -n "$CHECKS_JSON" ]; then printf '%s' "$CHECKS_JSON" > "$RUNNER_TEMP/checks.json"; checks="$RUNNER_TEMP/checks.json"; fi
+          python monitor/synthetic_check.py "$TARGET" --checks "$checks" --report report.md
+      - name: Keep the report
+        id: keep
+        if: always()
+        run: |
+          [ -f report.md ] || echo "No report: the monitor stopped before writing one. See the run log." > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          eof="EOF_$(openssl rand -hex 16)"
+          { echo "report<<$eof"; cat report.md; echo "$eof"; } >> "$GITHUB_OUTPUT"
+
+  alert:
+    needs: check
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Open or update the alert issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: "Synthetic monitor alert: ${{ github.workflow }}"
+          REPORT: ${{ needs.check.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+        run: bash monitor/alert.sh

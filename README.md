@@ -51,6 +51,30 @@ reads the public PyPI and npm registries), so a client can let the agent call it
 command it checks, and it writes no files: it reads the cache the CLI keeps (`GHOSTCHECK_CACHE`) but never saves it. The server offers this one tool and
 no resources or prompts. `tests/test_mcp_agent_task.py` runs a real agent task over stdio to prove it.
 
+## Deployed demo and synthetic monitor
+**Nonproduction demo, not a service to rely on.** https://ghostcheck-api-demo.vercel.app/api/check?command=pip+install+requestss
+runs the same check as the MCP tool over HTTP (Vercel free plan, `api/check.py`) and returns the same JSON, plus
+`"deployment": "nonproduction-demo"`. It is GET-only and read-only: no cache is read or written, no secret is used, a
+command is capped at 2,000 characters and 10 packages, and each request has a 20-second budget with 5-second registry
+timeouts and no retries. A package it could not check in time is `unverified`, never `ok`. Responses are `no-store`.
+
+`.github/workflows/synthetic-monitor.yml` calls it every 30 minutes (and on demand) and asserts, against the live PyPI
+registry (`monitor/checks.json`):
+- `pip install requestss` is `block`, exit code 1, one package checked, with a HIGH `not-found` finding (or a
+  `typosquat` finding naming `requests`, in case someone registers the typo);
+- `pip install requests` is `ok`, exit code 0, one package checked, no findings.
+
+A failed run opens, or comments on, the issue "Synthetic monitor alert: synthetic-monitor" (label `monitor-alert`),
+and GitHub emails the owner about the failed scheduled run.
+
+First response when it fires: open the run's report (which command, which assertion, HTTP status, time), then
+1. the Vercel deployment and its function logs (`vercel ls ghostcheck-api-demo`, `vercel logs <deployment>`): a new
+   deploy, a 5xx or a timeout points at our side;
+2. PyPI itself (`curl -sI https://pypi.org/pypi/requests/json`, https://status.python.org): a 429 or 5xx there makes
+   the check `unverified`, which is the fail-closed answer, not a ghostcheck bug;
+3. the last merged PR (`git log -1 --merges`): a parser or rules change that turned the typo into `ok` is the
+   dangerous case, a wrong "safe".
+
 ## Roadmap
 This repository is built as a "software factory" for the Qodo hackathon: rules in `AGENTS.md`, tickets, agent-written
 PRs reviewed by Qodo. Next: an approve / escalate gate for risky packages.

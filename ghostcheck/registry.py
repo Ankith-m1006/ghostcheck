@@ -60,14 +60,14 @@ def cache_key(name: str, ecosystem: str) -> str:
 Fetcher = Callable[[str, str, dict], tuple[int, object]]
 
 
-def _requests_fetcher() -> Fetcher:
+def _requests_fetcher(timeout: float = 30) -> Fetcher:
     import requests
 
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
     def fetch(url: str, method: str = "GET", headers: dict | None = None):
-        resp = session.request(method, url, headers=headers or {}, timeout=30)
+        resp = session.request(method, url, headers=headers or {}, timeout=timeout)
         body = None
         if method == "GET" and resp.content:
             try:
